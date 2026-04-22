@@ -4,17 +4,17 @@
 
 import { useState, useEffect, useCallback, useMemo } from 'react';
 import { useNavigate } from 'react-router-dom';
-import ReactECharts from 'echarts-for-react';
 import { motion } from 'framer-motion';
 import { Grid3X3, Building2, Lightbulb, Star } from 'lucide-react';
 import { Tabs, Loading } from '@/components/common';
 import { usePolling } from '@/hooks';
-import { useBoardData } from '@/contexts';
+import { useBoardData, useAppSettings } from '@/contexts';
 import { getAllQuotesByCodes, getIndustryConstituents } from '@/services/sdk';
-import { getAllWatchlistCodes, getHeatmapConfig, saveHeatmapConfig } from '@/services/storage';
+import { getAllWatchlistCodes } from '@/services/storage';
 import { formatPercent, formatAmount } from '@/utils/format';
 import type { FullQuote } from 'stock-sdk';
 import type { HeatmapConfig } from '@/types';
+import { LazyEChart } from '@/components/charts/LazyEChart';
 import styles from './Heatmap.module.css';
 
 // 维度选项
@@ -39,23 +39,32 @@ const SIZE_FIELD_OPTIONS = [
   { key: 'amount', label: '成交额' },
 ];
 
+const TOP_K_OPTIONS = [
+  { key: '50', label: 'Top 50' },
+  { key: '100', label: 'Top 100' },
+  { key: '200', label: 'Top 200' },
+];
+
 export function Heatmap() {
   const navigate = useNavigate();
-  
+  const { settings, updateSettings, getRefreshInterval } = useAppSettings();
+
   // 使用共享的板块数据（优化：避免重复请求）
   const { industryList, conceptList, loading: boardLoading } = useBoardData();
 
-  // 配置状态
-  const [config, setConfig] = useState<HeatmapConfig>(getHeatmapConfig);
+  const config = settings.heatmapConfig;
 
   // 个股数据状态
   const [stockQuotes, setStockQuotes] = useState<FullQuote[]>([]);
 
   // 更新配置
   const updateConfig = (updates: Partial<HeatmapConfig>) => {
-    const newConfig = { ...config, ...updates };
-    setConfig(newConfig);
-    saveHeatmapConfig(newConfig);
+    updateSettings({
+      heatmapConfig: {
+        ...config,
+        ...updates,
+      },
+    });
   };
 
   // 加载个股数据（只在自选或个股模式时调用）
@@ -111,7 +120,7 @@ export function Heatmap() {
 
   // 轮询个股数据（板块数据由全局 Context 管理，无需轮询）
   usePolling(fetchStockData, {
-    interval: 10000,
+    interval: getRefreshInterval('heatmap'),
     enabled: !boardLoading && (config.dimension === 'stock' || config.dimension === 'watchlist'),
   });
 
@@ -406,13 +415,23 @@ export function Heatmap() {
             {config.colorMode === 'red-rise' ? '红涨绿跌' : '绿涨红跌'}
           </button>
         </div>
+
+        <div className={styles.controlGroup}>
+          <span className={styles.controlLabel}>范围</span>
+          <Tabs
+            items={TOP_K_OPTIONS}
+            activeKey={String(config.topK)}
+            onChange={(key) => updateConfig({ topK: Number(key) })}
+            size="sm"
+          />
+        </div>
       </motion.div>
 
       {/* 热力图 */}
       <div className={styles.chartCard}>
         <div className={styles.chartWrapper}>
           {treemapData.length > 0 ? (
-            <ReactECharts
+            <LazyEChart
               option={chartOption}
               style={{ height: '100%', width: '100%' }}
               onEvents={{ click: handleChartClick }}

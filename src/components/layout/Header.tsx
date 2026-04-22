@@ -31,13 +31,27 @@ import {
 import { useToast } from '@/components/common';
 import { useTheme } from '@/hooks';
 import type { SearchHistoryItem } from '@/types';
+import type { AppSearchResult } from '@/services/sdk';
+import { normalizeStockCode } from '@/utils/format';
 import styles from './Header.module.css';
 
-interface SearchResult {
-  code: string;
-  name: string;
-  market: string;
-  type: string;
+function getHistoryRoute(item: SearchHistoryItem): string | null {
+  if (item.type === '行业板块') {
+    return `/boards/industry/${item.code}`;
+  }
+  if (item.type === '概念板块') {
+    return `/boards/concept/${item.code}`;
+  }
+
+  const normalizedCode = normalizeStockCode(item.code);
+  if (
+    ['sh', 'sz', 'bj'].includes(item.market.toLowerCase()) &&
+    /^(sh|sz|bj)\d{6}$/i.test(normalizedCode)
+  ) {
+    return `/s/${normalizedCode}`;
+  }
+
+  return null;
 }
 
 export function Header() {
@@ -46,7 +60,7 @@ export function Header() {
   const { theme, toggleTheme } = useTheme();
   const [keyword, setKeyword] = useState('');
   const [isOpen, setIsOpen] = useState(false);
-  const [results, setResults] = useState<SearchResult[]>([]);
+  const [results, setResults] = useState<AppSearchResult[]>([]);
   const [history, setHistory] = useState<SearchHistoryItem[]>([]);
   const [isLoading, setIsLoading] = useState(false);
   const [activeIndex, setActiveIndex] = useState(-1);
@@ -57,10 +71,10 @@ export function Header() {
   const debounceRef = useRef<number | null>(null);
 
   // 快速加自选
-  const handleQuickAdd = (e: React.MouseEvent, item: SearchResult) => {
+  const handleQuickAdd = (e: React.MouseEvent, item: AppSearchResult) => {
     e.stopPropagation();
-    if (item.type === '行业板块' || item.type === '概念板块') {
-      toast.info('板块不能加入自选');
+    if (!item.isSupported || item.entityType !== 'stock') {
+      toast.info('当前结果暂不支持加入自选');
       return;
     }
     if (addedCodes.has(item.code) || isInWatchlist(item.code)) {
@@ -131,7 +145,12 @@ export function Header() {
   };
 
   // 选择结果
-  const handleSelect = (item: SearchResult) => {
+  const handleSelect = (item: AppSearchResult) => {
+    if (!item.isSupported || !item.route) {
+      toast.info(`${item.name} 暂未接入当前看板详情页`);
+      return;
+    }
+
     addSearchHistory({
       code: item.code,
       name: item.name,
@@ -142,25 +161,21 @@ export function Header() {
     setKeyword('');
     setIsOpen(false);
     setResults([]);
-
-    // 根据类型跳转
-    if (item.type === '行业板块') {
-      navigate(`/boards/industry/${item.code}`);
-    } else if (item.type === '概念板块') {
-      navigate(`/boards/concept/${item.code}`);
-    } else {
-      navigate(`/s/${item.code}`);
-    }
+    navigate(item.route);
   };
 
   // 选择历史
   const handleSelectHistory = (item: SearchHistoryItem) => {
-    handleSelect({
-      code: item.code,
-      name: item.name,
-      market: item.market,
-      type: item.type,
-    });
+    const route = getHistoryRoute(item);
+    if (!route) {
+      toast.info(`${item.name} 暂未接入当前看板详情页`);
+      return;
+    }
+
+    setKeyword('');
+    setIsOpen(false);
+    setResults([]);
+    navigate(route);
   };
 
   // 清除历史
@@ -183,12 +198,12 @@ export function Header() {
       setActiveIndex((prev) => (prev > 0 ? prev - 1 : maxIndex));
     } else if (e.key === 'Enter') {
       e.preventDefault();
-      if (activeIndex >= 0 && items[activeIndex]) {
-        if (keyword) {
-          handleSelect(items[activeIndex] as SearchResult);
-        } else {
-          handleSelectHistory(items[activeIndex] as SearchHistoryItem);
-        }
+        if (activeIndex >= 0 && items[activeIndex]) {
+          if (keyword) {
+            handleSelect(items[activeIndex] as AppSearchResult);
+          } else {
+            handleSelectHistory(items[activeIndex] as SearchHistoryItem);
+          }
       } else if (results.length > 0) {
         handleSelect(results[0]);
       }
@@ -258,6 +273,8 @@ export function Header() {
                     <div
                       key={item.code}
                       className={`${styles.resultItem} ${
+                        !item.isSupported ? styles.unsupported : ''
+                      } ${
                         index === activeIndex ? styles.active : ''
                       }`}
                       onClick={() => handleSelect(item)}
@@ -267,9 +284,11 @@ export function Header() {
                       </span>
                       <span className={styles.itemName}>{item.name}</span>
                       <span className={styles.itemCode}>{item.code}</span>
-                      <span className={styles.itemType}>{item.type}</span>
+                      <span className={styles.itemType}>
+                        {item.isSupported ? item.type : '暂不支持'}
+                      </span>
                       {/* 股票类型显示快速加自选按钮 */}
-                      {item.type !== '行业板块' && item.type !== '概念板块' && (
+                      {item.entityType === 'stock' && item.isSupported && (
                         <button
                           className={`${styles.quickAddBtn} ${checkIsInWatchlist(item.code) ? styles.added : ''}`}
                           onClick={(e) => handleQuickAdd(e, item)}

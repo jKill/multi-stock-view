@@ -5,6 +5,16 @@
 
 import { StockSDK } from 'stock-sdk';
 import type { CacheItem } from '@/types';
+import type { DividendDetail, SearchResult as SDKSearchResult } from 'stock-sdk';
+import { normalizeStockCode } from '@/utils/format';
+
+export type SearchEntityType = 'stock' | 'industry' | 'concept' | 'unsupported';
+
+export interface AppSearchResult extends SDKSearchResult {
+  entityType: SearchEntityType;
+  isSupported: boolean;
+  route: string | null;
+}
 
 // SDK 单例
 export const sdk = new StockSDK({
@@ -14,6 +24,15 @@ export const sdk = new StockSDK({
     baseDelay: 1000,
     maxDelay: 10000,
     backoffMultiplier: 2,
+  },
+  rateLimit: {
+    requestsPerSecond: 4,
+    maxBurst: 8,
+  },
+  circuitBreaker: {
+    failureThreshold: 8,
+    resetTimeout: 30000,
+    halfOpenRequests: 1,
   },
 });
 
@@ -30,7 +49,51 @@ const DEFAULT_TTL = {
   quotes: 5000, // 实时行情 5s（从 3s 增加）
   fundFlow: 30000, // 资金流 30s（从 10s 增加）
   timeline: 5000, // 分时 5s（从 3s 增加）
+  dividends: 21600000, // 分红数据 6h
 };
+
+function normalizeSearchResult(item: SDKSearchResult): AppSearchResult {
+  const normalizedCode = normalizeStockCode(item.code);
+  const normalizedType = item.type.trim();
+
+  if (normalizedType === '行业板块') {
+    return {
+      ...item,
+      entityType: 'industry',
+      isSupported: true,
+      route: `/boards/industry/${item.code}`,
+    };
+  }
+
+  if (normalizedType === '概念板块') {
+    return {
+      ...item,
+      entityType: 'concept',
+      isSupported: true,
+      route: `/boards/concept/${item.code}`,
+    };
+  }
+
+  if (
+    ['sh', 'sz', 'bj'].includes(item.market.toLowerCase()) &&
+    /^(sh|sz|bj)\d{6}$/i.test(normalizedCode)
+  ) {
+    return {
+      ...item,
+      code: normalizedCode,
+      entityType: 'stock',
+      isSupported: true,
+      route: `/s/${normalizedCode}`,
+    };
+  }
+
+  return {
+    ...item,
+    entityType: 'unsupported',
+    isSupported: false,
+    route: null,
+  };
+}
 
 /**
  * 生成缓存键
@@ -348,10 +411,19 @@ export async function getPanelLargeOrder(codes: string[]) {
  * @returns 搜索结果列表
  */
 export async function search(keyword: string) {
-  return sdk.search(keyword);
+  const results = await sdk.search(keyword);
+  return results.map(normalizeSearchResult);
 }
 
 // ========== 其他 API ==========
+
+/**
+ * 获取分红派息详情
+ */
+export async function getDividendDetail(symbol: string): Promise<DividendDetail[]> {
+  const key = getCacheKey('getDividendDetail', symbol);
+  return withCache(key, DEFAULT_TTL.dividends, () => sdk.getDividendDetail(symbol));
+}
 
 /**
  * 获取交易日历

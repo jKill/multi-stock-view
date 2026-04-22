@@ -19,7 +19,7 @@ import styles from './Rankings.module.css';
 const RANKING_TYPES = [
   { key: 'rise', label: '涨幅榜', icon: <TrendingUp size={14} /> },
   { key: 'fall', label: '跌幅榜', icon: <TrendingDown size={14} /> },
-  { key: 'amount', label: '成交额', icon: <BarChart2 size={14} /> },
+  { key: 'amount', label: '总市值', icon: <BarChart2 size={14} /> },
   { key: 'turnover', label: '换手率', icon: <RefreshCw size={14} /> },
 ];
 
@@ -48,6 +48,9 @@ export function Rankings() {
       case 'turnover':
         sorted.sort((a, b) => (b.turnoverRate ?? 0) - (a.turnoverRate ?? 0));
         break;
+      case 'amount':
+        sorted.sort((a, b) => (b.totalMarketCap ?? 0) - (a.totalMarketCap ?? 0));
+        break;
       default:
         break;
     }
@@ -65,6 +68,9 @@ export function Rankings() {
         break;
       case 'turnover':
         sorted.sort((a, b) => (b.turnoverRate ?? 0) - (a.turnoverRate ?? 0));
+        break;
+      case 'amount':
+        sorted.sort((a, b) => (b.totalMarketCap ?? 0) - (a.totalMarketCap ?? 0));
         break;
       default:
         break;

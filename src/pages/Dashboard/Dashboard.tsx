@@ -2,14 +2,14 @@
  * 总览页面
  */
 
-import { useState, useCallback, useEffect } from 'react';
+import { useState, useCallback, useEffect, useMemo } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { motion } from 'framer-motion';
 import { Plus } from 'lucide-react';
 import { Card, Tabs, Loading, Empty, Button } from '@/components/common';
 import { usePolling } from '@/hooks';
-import { useBoardData } from '@/contexts';
-import { getFullQuotes } from '@/services/sdk';
+import { useBoardData, useAppSettings } from '@/contexts';
+import { getAllAShareQuotes, getFullQuotes } from '@/services/sdk';
 import { getAllWatchlistCodes } from '@/services/storage';
 import {
   formatPrice,
@@ -38,8 +38,18 @@ const RANKING_TABS = [
   { key: 'turnover', label: '换手率' },
 ];
 
+interface MarketSummary {
+  riseCount: number;
+  fallCount: number;
+  flatCount: number;
+  limitUpCount: number;
+  limitDownCount: number;
+  totalAmount: number;
+}
+
 export function Dashboard() {
   const navigate = useNavigate();
+  const { getRefreshInterval } = useAppSettings();
 
   // 使用共享的板块数据（优化：避免重复请求）
   const { industryList, conceptList, loading: boardLoading } = useBoardData();
@@ -47,12 +57,15 @@ export function Dashboard() {
   // 本地数据状态
   const [indices, setIndices] = useState<FullQuote[]>([]);
   const [watchlistQuotes, setWatchlistQuotes] = useState<FullQuote[]>([]);
+  const [marketQuotes, setMarketQuotes] = useState<FullQuote[]>([]);
   const [rankingTab, setRankingTab] = useState('rise');
   const [boardTab, setBoardTab] = useState<'industry' | 'concept'>('industry');
   const [initialLoading, setInitialLoading] = useState(true);
 
   // 获取自选代码
   const watchlistCodes = getAllWatchlistCodes();
+  const listRefreshInterval = getRefreshInterval('list');
+  const breadthRefreshInterval = Math.max(listRefreshInterval * 4, 60000);
 
   // 只加载指数和自选数据（板块数据由全局 Context 提供）
   const fetchQuoteData = useCallback(async () => {
@@ -65,6 +78,8 @@ export function Dashboard() {
       if (watchlistCodes.length > 0) {
         const watchlistData = await getFullQuotes(watchlistCodes.slice(0, 50));
         setWatchlistQuotes(watchlistData);
+      } else {
+        setWatchlistQuotes([]);
       }
     } catch (error) {
       console.error('Dashboard fetch error:', error);
@@ -75,14 +90,33 @@ export function Dashboard() {
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [watchlistCodes.length]);
 
+  const fetchMarketOverview = useCallback(async () => {
+    try {
+      const quotes = await getAllAShareQuotes({
+        batchSize: 500,
+        concurrency: 4,
+      });
+      setMarketQuotes(quotes);
+    } catch (error) {
+      console.error('Dashboard market overview error:', error);
+    }
+  }, []);
+
   // 初始加载
   useEffect(() => {
     fetchQuoteData();
-  }, [fetchQuoteData]);
+    fetchMarketOverview();
+  }, [fetchMarketOverview, fetchQuoteData]);
 
   // 轮询指数和自选数据（优化：只轮询需要实时更新的数据）
   usePolling(fetchQuoteData, {
-    interval: 15000,
+    interval: listRefreshInterval,
+    enabled: !initialLoading,
+    immediate: false,
+  });
+
+  usePolling(fetchMarketOverview, {
+    interval: breadthRefreshInterval,
     enabled: !initialLoading,
     immediate: false,
   });
@@ -97,12 +131,56 @@ export function Dashboard() {
     navigate(`/boards/${type}/${code}`);
   };
 
+  const currentBoards = boardTab === 'industry' ? industryList : conceptList;
+  const strongestBoard = currentBoards[0];
+  const marketSummary = useMemo<MarketSummary>(() => {
+    return marketQuotes.reduce(
+      (summary, quote) => {
+        if (quote.changePercent > 0) summary.riseCount += 1;
+        else if (quote.changePercent < 0) summary.fallCount += 1;
+        else summary.flatCount += 1;
+
+        if (quote.changePercent >= 9.8) summary.limitUpCount += 1;
+        if (quote.changePercent <= -9.8) summary.limitDownCount += 1;
+        summary.totalAmount += quote.amount ?? 0;
+        return summary;
+      },
+      {
+        riseCount: 0,
+        fallCount: 0,
+        flatCount: 0,
+        limitUpCount: 0,
+        limitDownCount: 0,
+        totalAmount: 0,
+      }
+    );
+  }, [marketQuotes]);
+
+  const rankingItems = useMemo(() => {
+    const sorted = [...marketQuotes];
+    switch (rankingTab) {
+      case 'fall':
+        sorted.sort((a, b) => a.changePercent - b.changePercent);
+        break;
+      case 'amount':
+        sorted.sort((a, b) => (b.amount ?? 0) - (a.amount ?? 0));
+        break;
+      case 'turnover':
+        sorted.sort((a, b) => (b.turnoverRate ?? 0) - (a.turnoverRate ?? 0));
+        break;
+      case 'rise':
+      default:
+        sorted.sort((a, b) => b.changePercent - a.changePercent);
+        break;
+    }
+
+    return sorted.slice(0, 10);
+  }, [marketQuotes, rankingTab]);
+
   // 只在初始加载时显示 loading，之后即使数据获取失败也显示页面
   if (initialLoading && boardLoading) {
     return <Loading fullScreen text="加载中..." />;
   }
-
-  const currentBoards = boardTab === 'industry' ? industryList : conceptList;
 
   return (
     <div className={styles.dashboard}>
@@ -135,6 +213,58 @@ export function Dashboard() {
             </div>
           </motion.div>
         ))}
+      </section>
+
+      <section className={styles.statsGrid}>
+        <Card title="市场涨跌">
+          <div className={styles.statCard}>
+            <div className={styles.statValueRow}>
+              <span className="text-rise">{marketSummary.riseCount}</span>
+              <span className={styles.statDivider}>/</span>
+              <span className="text-fall">{marketSummary.fallCount}</span>
+            </div>
+            <div className={styles.statMeta}>
+              <span>上涨 / 下跌</span>
+              <span>{marketSummary.flatCount} 平</span>
+            </div>
+          </div>
+        </Card>
+
+        <Card title="涨跌停">
+          <div className={styles.statCard}>
+            <div className={styles.statValueRow}>
+              <span className="text-rise">{marketSummary.limitUpCount}</span>
+              <span className={styles.statDivider}>/</span>
+              <span className="text-fall">{marketSummary.limitDownCount}</span>
+            </div>
+            <div className={styles.statMeta}>
+              <span>涨停 / 跌停</span>
+            </div>
+          </div>
+        </Card>
+
+        <Card title="全市场成交额">
+          <div className={styles.statCard}>
+            <div className={styles.statValueLarge}>
+              {formatAmount(marketSummary.totalAmount)}
+            </div>
+            <div className={styles.statMeta}>
+              <span>A 股实时成交额快照</span>
+            </div>
+          </div>
+        </Card>
+
+        <Card title="最强板块">
+          <div className={styles.statCard}>
+            <div className={styles.statValueLarge}>{strongestBoard?.name ?? '--'}</div>
+            <div className={styles.statMeta}>
+              <span className={getChangeColorClass(strongestBoard?.changePercent)}>
+                {formatPercent(strongestBoard?.changePercent)}
+              </span>
+              <span>{boardTab === 'industry' ? '行业强度' : '概念强度'}</span>
+            </div>
+          </div>
+        </Card>
       </section>
 
       <div className={styles.mainGrid}>
@@ -202,22 +332,30 @@ export function Dashboard() {
               />
             }
           >
-            {industryList.length === 0 ? (
+            {rankingItems.length === 0 ? (
               <Loading size="md" />
             ) : (
               <div className={styles.rankingList}>
-                {industryList.slice(0, 10).map((item, index) => (
+                {rankingItems.map((item, index) => (
                   <div
                     key={item.code}
                     className={styles.rankingItem}
-                    onClick={() => handleBoardClick(item.code, 'industry')}
+                    onClick={() => handleStockClick(item.code)}
                   >
                     <span className={styles.rankNum}>{index + 1}</span>
                     <div className={styles.stockInfo}>
-                      <span className={styles.stockName}>{item.leadingStock}</span>
+                      <span className={styles.stockName}>{item.name}</span>
+                      <span className={styles.stockCode}>{item.code}</span>
                     </div>
-                    <div className={`${styles.stockChange} ${getChangeColorClass(item.leadingStockChangePercent)}`}>
-                      {formatPercent(item.leadingStockChangePercent)}
+                    <div className={styles.stockPrice}>
+                      <span>{formatPrice(item.price)}</span>
+                    </div>
+                    <div className={`${styles.stockChange} ${getChangeColorClass(item.changePercent)}`}>
+                      {rankingTab === 'amount'
+                        ? formatAmount(item.amount)
+                        : rankingTab === 'turnover'
+                          ? `${item.turnoverRate?.toFixed(2) ?? '--'}%`
+                          : formatPercent(item.changePercent)}
                     </div>
                   </div>
                 ))}

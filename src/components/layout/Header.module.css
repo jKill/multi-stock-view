@@ -144,6 +144,10 @@
   background: var(--bg-tertiary);
 }
 
+.resultItem.unsupported {
+  opacity: 0.72;
+}
+
 .typeIcon {
   display: flex;
   align-items: center;

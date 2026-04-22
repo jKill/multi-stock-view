@@ -6,4 +6,7 @@ export { ThemeProvider } from './ThemeProvider';
 export { ThemeContext } from './themeContext';
 export type { Theme, ThemeContextValue } from './themeTypes';
 
-export { BoardDataProvider, useBoardData } from './BoardDataContext';
+export { AppSettingsProvider } from './AppSettingsProvider';
+export { BoardDataProvider } from './BoardDataContext';
+export { useBoardData } from './useBoardData';
+export { useAppSettings } from './useAppSettings';

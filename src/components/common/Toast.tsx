@@ -2,28 +2,17 @@
  * Toast 提示组件
  */
 
-import { useState, useCallback, createContext, useContext, type ReactNode } from 'react';
+import { useState, useCallback, type ReactNode } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { CheckCircle, AlertCircle, AlertTriangle, Info, X } from 'lucide-react';
+import { ToastContext, type ToastType, type ToastContextValue } from './toastContext';
 import styles from './Toast.module.css';
-
-// Toast 类型
-export type ToastType = 'success' | 'error' | 'info' | 'warning';
 
 interface ToastMessage {
   id: number;
   type: ToastType;
   message: string;
 }
-
-interface ToastContextValue {
-  success: (message: string) => void;
-  error: (message: string) => void;
-  info: (message: string) => void;
-  warning: (message: string) => void;
-}
-
-const ToastContext = createContext<ToastContextValue | null>(null);
 
 let toastId = 0;
 
@@ -92,18 +81,4 @@ export function ToastProvider({ children }: { children: ReactNode }) {
       </div>
     </ToastContext.Provider>
   );
-}
-
-export function useToast(): ToastContextValue {
-  const context = useContext(ToastContext);
-  if (!context) {
-    // 返回一个空的实现，防止组件在 Provider 外使用时崩溃
-    return {
-      success: () => {},
-      error: () => {},
-      info: () => {},
-      warning: () => {},
-    };
-  }
-  return context;
 }

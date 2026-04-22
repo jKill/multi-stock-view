@@ -6,4 +6,6 @@ export { Card } from './Card';
 export { Button } from './Button';
 export { Loading, Skeleton, Empty } from './Loading';
 export { Tabs } from './Tabs';
-export { ToastProvider, useToast } from './Toast';export { Logo } from './Logo';
+export { ToastProvider } from './Toast';
+export { useToast } from './useToast';
+export { Logo } from './Logo';

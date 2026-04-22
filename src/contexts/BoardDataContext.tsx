@@ -3,27 +3,12 @@
  * 避免多个页面重复请求相同的板块列表数据
  */
 
-import { createContext, useContext, useState, useCallback, useEffect, useRef, type ReactNode } from 'react';
+import { useState, useCallback, useEffect, useRef, type ReactNode } from 'react';
 import { getIndustryList, getConceptList } from '@/services/sdk';
 import type { IndustryBoard, ConceptBoard } from 'stock-sdk';
+import { BoardDataContext } from './boardDataValueContext';
+import { useAppSettings } from './useAppSettings';
 
-interface BoardDataContextValue {
-  /** 行业板块列表 */
-  industryList: IndustryBoard[];
-  /** 概念板块列表 */
-  conceptList: ConceptBoard[];
-  /** 是否正在加载 */
-  loading: boolean;
-  /** 上次更新时间 */
-  lastUpdated: number | null;
-  /** 手动刷新数据 */
-  refresh: () => Promise<void>;
-}
-
-const BoardDataContext = createContext<BoardDataContextValue | null>(null);
-
-// 全局刷新间隔（30秒）
-const REFRESH_INTERVAL = 30000;
 // 最小刷新间隔（防止频繁刷新）
 const MIN_REFRESH_INTERVAL = 10000;
 
@@ -32,6 +17,7 @@ interface BoardDataProviderProps {
 }
 
 export function BoardDataProvider({ children }: BoardDataProviderProps) {
+  const { getRefreshInterval } = useAppSettings();
   const [industryList, setIndustryList] = useState<IndustryBoard[]>([]);
   const [conceptList, setConceptList] = useState<ConceptBoard[]>([]);
   // 初始加载状态为 true，首次加载完成后变为 false
@@ -41,6 +27,7 @@ export function BoardDataProvider({ children }: BoardDataProviderProps) {
   const isFetchingRef = useRef(false);
   const timerRef = useRef<number | null>(null);
   const isInitialLoadRef = useRef(true);
+  const refreshInterval = Math.max(getRefreshInterval('list'), 30000);
 
   // 获取板块数据
   const fetchData = useCallback(async (force = false) => {
@@ -94,7 +81,7 @@ export function BoardDataProvider({ children }: BoardDataProviderProps) {
         if (!document.hidden) {
           fetchData();
         }
-      }, REFRESH_INTERVAL);
+      }, refreshInterval);
     };
 
     startTimer();
@@ -109,7 +96,7 @@ export function BoardDataProvider({ children }: BoardDataProviderProps) {
         }
       } else {
         // 页面显示时，如果数据过期则刷新
-        if (lastUpdated && Date.now() - lastUpdated > REFRESH_INTERVAL) {
+        if (lastUpdated && Date.now() - lastUpdated > refreshInterval) {
           fetchData();
         }
         // 重新启动定时器
@@ -127,7 +114,7 @@ export function BoardDataProvider({ children }: BoardDataProviderProps) {
       }
       document.removeEventListener('visibilitychange', handleVisibilityChange);
     };
-  }, [fetchData, lastUpdated]);
+  }, [fetchData, lastUpdated, refreshInterval]);
 
   return (
     <BoardDataContext.Provider
@@ -142,15 +129,4 @@ export function BoardDataProvider({ children }: BoardDataProviderProps) {
       {children}
     </BoardDataContext.Provider>
   );
-}
-
-/**
- * 使用板块数据 Hook
- */
-export function useBoardData() {
-  const context = useContext(BoardDataContext);
-  if (!context) {
-    throw new Error('useBoardData must be used within BoardDataProvider');
-  }
-  return context;
 }

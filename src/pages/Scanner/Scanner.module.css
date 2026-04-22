@@ -39,10 +39,78 @@
   gap: var(--spacing-lg);
 }
 
+.configStack {
+  display: flex;
+  flex-direction: column;
+  gap: var(--spacing-md);
+}
+
+.fieldBlock {
+  display: flex;
+  flex-direction: column;
+  gap: var(--spacing-sm);
+}
+
+.fieldRow {
+  display: flex;
+  gap: var(--spacing-sm);
+}
+
+.select,
+.selectSmall {
+  min-width: 0;
+  padding: var(--spacing-sm) var(--spacing-md);
+  font-size: var(--font-size-sm);
+  color: var(--text-primary);
+  background: var(--bg-tertiary);
+  border: 1px solid var(--border-primary);
+  border-radius: var(--radius-md);
+}
+
+.select {
+  flex: 1;
+}
+
+.helperText {
+  font-size: var(--font-size-xs);
+  color: var(--text-tertiary);
+}
+
+.topNGroup {
+  display: flex;
+  gap: var(--spacing-sm);
+  flex-wrap: wrap;
+}
+
+.topNButton {
+  padding: 6px 12px;
+  font-size: var(--font-size-xs);
+  color: var(--text-secondary);
+  background: var(--bg-tertiary);
+  border-radius: var(--radius-sm);
+  transition: all var(--transition-fast);
+}
+
+.topNButton:hover {
+  color: var(--text-primary);
+  background: var(--border-primary);
+}
+
+.topNButton.active {
+  color: var(--color-accent);
+  background: var(--color-accent-bg);
+}
+
 /* 信号网格 */
 .signalGrid {
   display: grid;
   grid-template-columns: repeat(2, 1fr);
+  gap: var(--spacing-sm);
+}
+
+.actionRow {
+  display: flex;
+  flex-direction: column;
   gap: var(--spacing-sm);
 }
 
@@ -193,5 +261,9 @@
 @media (max-width: 768px) {
   .signalGrid {
     grid-template-columns: 1fr;
+  }
+
+  .fieldRow {
+    flex-direction: column;
   }
 }

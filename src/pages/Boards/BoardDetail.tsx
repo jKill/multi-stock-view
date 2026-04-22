@@ -5,12 +5,9 @@
 import { useState, useEffect, useCallback, useMemo } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { motion } from 'framer-motion';
-import ReactECharts from 'echarts-for-react';
 import { ArrowLeft, Plus, Check } from 'lucide-react';
 import { Card, Tabs, Loading, Button, Empty, useToast } from '@/components/common';
 import {
-  getIndustryList,
-  getConceptList,
   getIndustryConstituents,
   getConceptConstituents,
   getIndustryKline,
@@ -19,6 +16,7 @@ import {
   getConceptSpot,
 } from '@/services/sdk';
 import { addToWatchlist, isInWatchlist } from '@/services/storage';
+import { useBoardData } from '@/contexts';
 import {
   formatPrice,
   formatPercent,
@@ -28,8 +26,6 @@ import {
   getChangeColorClass,
 } from '@/utils/format';
 import type {
-  IndustryBoard,
-  ConceptBoard,
   IndustryBoardConstituent,
   ConceptBoardConstituent,
   IndustryBoardKline,
@@ -37,6 +33,7 @@ import type {
   IndustryBoardSpot,
   ConceptBoardSpot,
 } from 'stock-sdk';
+import { LazyEChart } from '@/components/charts/LazyEChart';
 import styles from './BoardDetail.module.css';
 
 // K线周期
@@ -50,9 +47,9 @@ export function BoardDetail() {
   const { type, code } = useParams<{ type: 'industry' | 'concept'; code: string }>();
   const navigate = useNavigate();
   const toast = useToast();
+  const { industryList, conceptList, loading: boardLoading } = useBoardData();
 
   // 数据状态
-  const [boardInfo, setBoardInfo] = useState<IndustryBoard | ConceptBoard | null>(null);
   const [constituents, setConstituents] = useState<(IndustryBoardConstituent | ConceptBoardConstituent)[]>([]);
   const [klineData, setKlineData] = useState<(IndustryBoardKline | ConceptBoardKline)[]>([]);
   const [spotData, setSpotData] = useState<(IndustryBoardSpot | ConceptBoardSpot)[]>([]);
@@ -63,18 +60,11 @@ export function BoardDetail() {
   const [addedCodes, setAddedCodes] = useState<Set<string>>(new Set());
 
   const isIndustry = type === 'industry';
-
-  // 加载板块信息
-  const fetchBoardInfo = useCallback(async () => {
-    if (!code) return;
-    try {
-      const list = isIndustry ? await getIndustryList() : await getConceptList();
-      const info = list.find((b) => b.code === code);
-      if (info) setBoardInfo(info);
-    } catch (error) {
-      console.error('Fetch board info error:', error);
-    }
-  }, [code, isIndustry]);
+  const boardInfo = useMemo(() => {
+    if (!code) return null;
+    const list = isIndustry ? industryList : conceptList;
+    return list.find((item) => item.code === code) ?? null;
+  }, [code, conceptList, industryList, isIndustry]);
 
   // 加载成分股
   const fetchConstituents = useCallback(async () => {
@@ -120,7 +110,7 @@ export function BoardDetail() {
   useEffect(() => {
     const loadAll = async () => {
       setLoading(true);
-      await Promise.all([fetchBoardInfo(), fetchConstituents(), fetchSpot()]);
+      await Promise.all([fetchConstituents(), fetchSpot()]);
       await fetchKline();
       setLoading(false);
     };
@@ -218,7 +208,7 @@ export function BoardDetail() {
     return addedCodes.has(stockCode) || isInWatchlist(stockCode);
   };
 
-  if (loading) {
+  if (loading || boardLoading) {
     return <Loading fullScreen text="加载板块数据..." />;
   }
 
@@ -289,7 +279,7 @@ export function BoardDetail() {
         >
           <div className={styles.chartContainer}>
             {klineData.length > 0 ? (
-              <ReactECharts
+              <LazyEChart
                 option={klineChartOption}
                 style={{ height: '100%', width: '100%' }}
                 notMerge

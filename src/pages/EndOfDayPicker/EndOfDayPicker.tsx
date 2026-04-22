@@ -22,6 +22,7 @@ import {
   FolderOpen,
   Trash2,
   Clock,
+  CircleStop,
   ArrowUpDown,
   ArrowUp,
   ArrowDown,
@@ -30,73 +31,33 @@ import {
   X,
 } from 'lucide-react';
 import { useToast } from '@/components/common';
-import { getAllAShareQuotes, getTodayTimeline } from '@/services/sdk';
+import {
+  analyzeEndOfDayStocks,
+  type AnalysisProgress,
+  type EndOfDayFilters,
+  type EndOfDayStock,
+  isAnalysisAborted,
+  type TimelinePoint,
+} from '@/services/analysis';
 import { addToWatchlist, isInWatchlist } from '@/services/storage';
-import type { FullQuote, TodayTimelineResponse } from 'stock-sdk';
 import styles from './EndOfDayPicker.module.css';
 
 // ========== 类型定义 ==========
 
-interface FilterConditions {
-  marketCapMin: number;
-  marketCapMax: number;
-  volumeRatioMin: number;
-  changePercentMin: number;
-  changePercentMax: number;
-  turnoverRateMin: number;
-  turnoverRateMax: number;
-  excludeST: boolean;
-  timelineAboveAvgRatio: number;
-}
-
 interface SavedScheme {
   id: string;
   name: string;
-  filters: FilterConditions;
+  filters: EndOfDayFilters;
   createdAt: number;
 }
 
 interface RecentUsage {
-  filters: FilterConditions;
+  filters: EndOfDayFilters;
   usedAt: number;
 }
 
 type SortField = 'changePercent' | 'timelineAboveAvgRatio' | 'turnoverRate' | 'circulatingMarketCap' | 'volumeRatio';
 type SortOrder = 'asc' | 'desc';
-
-interface TimelinePoint {
-  time: string;
-  price: number;
-  avgPrice: number;
-}
-
-interface StockData {
-  code: string;
-  name: string;
-  price: number;
-  changePercent: number;
-  change: number;
-  volume: number;
-  amount: number;
-  turnoverRate: number | null;
-  volumeRatio: number | null;
-  circulatingMarketCap: number | null;
-  totalMarketCap: number | null;
-  pe: number | null;
-  pb: number | null;
-  high: number;
-  low: number;
-  open: number;
-  prevClose: number;
-  timeline?: TimelinePoint[];
-  timelineAboveAvgRatio?: number;
-}
-
-interface LoadingProgress {
-  completed: number;
-  total: number;
-  stage: string;
-}
 
 // ========== 常量 ==========
 
@@ -105,7 +66,7 @@ const SCHEMES_STORAGE_KEY = 'end-of-day-picker-schemes';
 const RECENT_USAGE_STORAGE_KEY = 'end-of-day-picker-recent';
 const MAX_RECENT_USAGE = 5;
 
-const DEFAULT_FILTERS: FilterConditions = {
+const DEFAULT_FILTERS: EndOfDayFilters = {
   marketCapMin: 50,
   marketCapMax: 200,
   volumeRatioMin: 1.2,
@@ -127,7 +88,7 @@ const SORT_OPTIONS: { field: SortField; label: string }[] = [
 
 // ========== 工具函数 ==========
 
-const loadFiltersFromStorage = (): FilterConditions => {
+const loadFiltersFromStorage = (): EndOfDayFilters => {
   try {
     const stored = localStorage.getItem(STORAGE_KEY);
     if (stored) {
@@ -140,7 +101,7 @@ const loadFiltersFromStorage = (): FilterConditions => {
   return DEFAULT_FILTERS;
 };
 
-const saveFiltersToStorage = (filters: FilterConditions): void => {
+const saveFiltersToStorage = (filters: EndOfDayFilters): void => {
   try {
     localStorage.setItem(STORAGE_KEY, JSON.stringify(filters));
   } catch (error) {
@@ -190,7 +151,7 @@ const saveRecentUsageToStorage = (recentUsage: RecentUsage[]): void => {
   }
 };
 
-const addRecentUsage = (filters: FilterConditions): void => {
+const addRecentUsage = (filters: EndOfDayFilters): void => {
   const recent = loadRecentUsageFromStorage();
   const newEntry: RecentUsage = { filters, usedAt: Date.now() };
   // 检查是否已存在相同配置
@@ -366,25 +327,19 @@ function StockCard({
   onToggleSelect,
   showSelect,
 }: {
-  stock: StockData;
+  stock: EndOfDayStock;
   index: number;
-  onAddWatchlist: (code: string, name: string) => void;
+  onAddWatchlist: (routeCode: string, name: string) => void;
   isSelected?: boolean;
   onToggleSelect?: (code: string) => void;
   showSelect?: boolean;
 }) {
   const navigate = useNavigate();
   const isPositive = stock.changePercent >= 0;
-  const inWatchlist = isInWatchlist(stock.code);
+  const inWatchlist = isInWatchlist(stock.routeCode);
 
   const handleCardClick = () => {
-    const marketPrefix =
-      stock.code.startsWith('6') || stock.code.startsWith('9')
-        ? 'sh'
-        : stock.code.startsWith('4') || stock.code.startsWith('8')
-          ? 'bj'
-          : 'sz';
-    navigate(`/s/${marketPrefix}${stock.code}`);
+    navigate(`/s/${stock.routeCode}`);
   };
 
   const handleSelectClick = (e: React.MouseEvent) => {
@@ -480,7 +435,7 @@ function StockCard({
         onClick={(e) => {
           e.stopPropagation();
           if (!inWatchlist) {
-            onAddWatchlist(stock.code, stock.name);
+            onAddWatchlist(stock.routeCode, stock.name);
           }
         }}
         disabled={inWatchlist}
@@ -493,7 +448,13 @@ function StockCard({
 }
 
 // 加载遮罩组件
-function LoadingOverlay({ progress }: { progress: LoadingProgress }) {
+function LoadingOverlay({
+  progress,
+  onCancel,
+}: {
+  progress: AnalysisProgress;
+  onCancel: () => void;
+}) {
   const percentage = progress.total > 0 ? Math.round((progress.completed / progress.total) * 100) : 0;
 
   return (
@@ -541,6 +502,11 @@ function LoadingOverlay({ progress }: { progress: LoadingProgress }) {
               : '正在初始化连接...'}
           </p>
         </div>
+
+        <button className={styles.cancelAnalysisBtn} onClick={onCancel}>
+          <CircleStop size={16} />
+          取消分析
+        </button>
       </div>
     </motion.div>
   );
@@ -550,17 +516,17 @@ function LoadingOverlay({ progress }: { progress: LoadingProgress }) {
 
 export function EndOfDayPicker() {
   const toast = useToast();
-  const [filters, setFilters] = useState<FilterConditions>(loadFiltersFromStorage);
+  const [filters, setFilters] = useState<EndOfDayFilters>(loadFiltersFromStorage);
   const [isEditing, setIsEditing] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
-  const [loadingProgress, setLoadingProgress] = useState<LoadingProgress>({
+  const [loadingProgress, setLoadingProgress] = useState<AnalysisProgress>({
     completed: 0,
     total: 0,
     stage: '',
   });
-  const [stocks, setStocks] = useState<StockData[]>([]);
+  const [stocks, setStocks] = useState<EndOfDayStock[]>([]);
   const [hasAnalyzed, setHasAnalyzed] = useState(false);
-  const abortRef = useRef(false);
+  const abortRef = useRef<AbortController | null>(null);
 
   // 方案管理
   const [savedSchemes, setSavedSchemes] = useState<SavedScheme[]>(loadSchemesFromStorage);
@@ -588,216 +554,55 @@ export function EndOfDayPicker() {
     setFilters(DEFAULT_FILTERS);
   }, []);
 
-  // 基础条件筛选
-  const filterStocksBasic = useCallback(
-    (quotes: FullQuote[]): Omit<StockData, 'timeline' | 'timelineAboveAvgRatio'>[] => {
-      return quotes
-        .filter((quote) => {
-          const marketCap = quote.circulatingMarketCap;
-          const volumeRatio = quote.volumeRatio;
-          const changePercent = quote.changePercent;
-          const turnoverRate = quote.turnoverRate;
-          const name = quote.name;
-
-          if (filters.excludeST && (name.includes('ST') || name.includes('*ST'))) {
-            return false;
-          }
-          if (
-            marketCap === null ||
-            marketCap < filters.marketCapMin ||
-            marketCap > filters.marketCapMax
-          ) {
-            return false;
-          }
-          if (volumeRatio === null || volumeRatio < filters.volumeRatioMin) {
-            return false;
-          }
-          if (
-            changePercent < filters.changePercentMin ||
-            changePercent > filters.changePercentMax
-          ) {
-            return false;
-          }
-          if (
-            turnoverRate === null ||
-            turnoverRate < filters.turnoverRateMin ||
-            turnoverRate > filters.turnoverRateMax
-          ) {
-            return false;
-          }
-          return true;
-        })
-        .map((quote) => ({
-          code: quote.code,
-          name: quote.name,
-          price: quote.price,
-          changePercent: quote.changePercent,
-          change: quote.change,
-          volume: quote.volume,
-          amount: quote.amount,
-          turnoverRate: quote.turnoverRate,
-          volumeRatio: quote.volumeRatio,
-          circulatingMarketCap: quote.circulatingMarketCap,
-          totalMarketCap: quote.totalMarketCap,
-          pe: quote.pe,
-          pb: quote.pb,
-          high: quote.high,
-          low: quote.low,
-          open: quote.open,
-          prevClose: quote.prevClose,
-        }))
-        .sort((a, b) => b.changePercent - a.changePercent);
-    },
-    [filters]
-  );
-
-  // 计算分时强度
-  const calculateTimelineRatio = (
-    timeline: TodayTimelineResponse
-  ): { ratio: number; points: TimelinePoint[] } => {
-    if (!timeline.data || timeline.data.length === 0) {
-      return { ratio: 0, points: [] };
-    }
-
-    const points: TimelinePoint[] = timeline.data.map((item) => ({
-      time: item.time,
-      price: item.price,
-      avgPrice: item.avgPrice,
-    }));
-
-    const aboveAvgCount = points.filter((p) => p.price >= p.avgPrice).length;
-    const ratio = (aboveAvgCount / points.length) * 100;
-
-    return { ratio, points };
-  };
-
-  // 获取分时数据并筛选
-  const filterWithTimeline = useCallback(
-    async (
-      basicStocks: Omit<StockData, 'timeline' | 'timelineAboveAvgRatio'>[],
-      minRatio: number,
-      onProgress: (completed: number, total: number) => void
-    ): Promise<StockData[]> => {
-      const results: StockData[] = [];
-      const total = basicStocks.length;
-
-      const batchSize = 5;
-      for (let i = 0; i < basicStocks.length; i += batchSize) {
-        if (abortRef.current) break;
-
-        const batch = basicStocks.slice(i, i + batchSize);
-        const promises = batch.map(async (stock) => {
-          try {
-            const marketPrefix =
-              stock.code.startsWith('6') || stock.code.startsWith('9')
-                ? 'sh'
-                : stock.code.startsWith('4') || stock.code.startsWith('8')
-                  ? 'bj'
-                  : 'sz';
-            const fullCode = `${marketPrefix}${stock.code}`;
-
-            const timeline = await getTodayTimeline(fullCode);
-            const { ratio, points } = calculateTimelineRatio(timeline);
-
-            if (ratio >= minRatio) {
-              return {
-                ...stock,
-                timeline: points,
-                timelineAboveAvgRatio: ratio,
-              } as StockData;
-            }
-            return null;
-          } catch (error) {
-            console.warn(`获取 ${stock.code} 分时数据失败:`, error);
-            return null;
-          }
-        });
-
-        const batchResults = await Promise.all(promises);
-        batchResults.forEach((result) => {
-          if (result) results.push(result);
-        });
-
-        onProgress(Math.min(i + batchSize, total), total);
-      }
-
-      return results.sort((a, b) => (b.timelineAboveAvgRatio || 0) - (a.timelineAboveAvgRatio || 0));
-    },
-    []
-  );
-
   // 开始分析
   const handleStartAnalysis = useCallback(async () => {
     setIsLoading(true);
     setLoadingProgress({ completed: 0, total: 0, stage: '获取行情数据' });
     setStocks([]);
-    abortRef.current = false;
+    const controller = new AbortController();
+    abortRef.current = controller;
 
     // 记录最近使用
     addRecentUsage(filters);
     setRecentUsage(loadRecentUsageFromStorage());
 
     try {
-      // 第一阶段：获取全市场行情
-      const quotes = await getAllAShareQuotes({
-        batchSize: 500,
-        concurrency: 5,
-        onProgress: (completed, total) => {
-          setLoadingProgress({ completed, total, stage: '获取行情数据' });
-        },
+      const finalStocks = await analyzeEndOfDayStocks(filters, {
+        signal: controller.signal,
+        onProgress: setLoadingProgress,
       });
 
-      if (abortRef.current) return;
-
-      // 第二阶段：基础条件筛选
-      setLoadingProgress({ completed: 0, total: 100, stage: '基础条件筛选' });
-      const basicFilteredStocks = filterStocksBasic(quotes);
-
-      if (basicFilteredStocks.length === 0) {
+      if (finalStocks.length === 0) {
         toast.info('没有符合基础条件的股票，请尝试调整筛选条件');
-        setIsLoading(false);
         setHasAnalyzed(true);
         return;
       }
 
-      if (abortRef.current) return;
-
-      // 第三阶段：分时结构筛选
-      setLoadingProgress({
-        completed: 0,
-        total: basicFilteredStocks.length,
-        stage: '分时结构筛选',
-      });
-      const finalStocks = await filterWithTimeline(
-        basicFilteredStocks,
-        filters.timelineAboveAvgRatio,
-        (completed, total) => {
-          setLoadingProgress({ completed, total, stage: '分时结构筛选' });
-        }
-      );
-
-      if (!abortRef.current) {
+      if (!controller.signal.aborted) {
         setStocks(finalStocks);
-        setHasAnalyzed(true);
       }
+      setHasAnalyzed(true);
     } catch (error) {
-      console.error('获取股票数据失败:', error);
-      toast.error('获取股票数据失败，请重试');
+      if (isAnalysisAborted(error)) {
+        toast.info('已取消分析');
+      } else {
+        console.error('获取股票数据失败:', error);
+        toast.error('获取股票数据失败，请重试');
+      }
     } finally {
+      abortRef.current = null;
       setIsLoading(false);
     }
-  }, [filters, filterStocksBasic, filterWithTimeline, toast]);
+  }, [filters, toast]);
+
+  const handleCancelAnalysis = useCallback(() => {
+    abortRef.current?.abort();
+  }, []);
 
   // 加入自选
   const handleAddWatchlist = useCallback(
-    (code: string, name: string) => {
-      const marketPrefix =
-        code.startsWith('6') || code.startsWith('9')
-          ? 'sh'
-          : code.startsWith('4') || code.startsWith('8')
-            ? 'bj'
-            : 'sz';
-      addToWatchlist(`${marketPrefix}${code}`);
+    (routeCode: string, name: string) => {
+      addToWatchlist(routeCode);
       toast.success(`已将 ${name} 加入自选`);
       // 强制刷新以更新按钮状态
       setStocks((prev) => [...prev]);
@@ -806,7 +611,7 @@ export function EndOfDayPicker() {
   );
 
   // 更新筛选条件
-  const handleFilterChange = (key: keyof FilterConditions, value: number | boolean) => {
+  const handleFilterChange = (key: keyof EndOfDayFilters, value: number | boolean) => {
     setFilters((prev) => ({ ...prev, [key]: value }));
   };
 
@@ -898,14 +703,8 @@ export function EndOfDayPicker() {
     let addedCount = 0;
     selectedStocks.forEach((code) => {
       const stock = stocks.find((s) => s.code === code);
-      if (stock && !isInWatchlist(code)) {
-        const marketPrefix =
-          code.startsWith('6') || code.startsWith('9')
-            ? 'sh'
-            : code.startsWith('4') || code.startsWith('8')
-              ? 'bj'
-              : 'sz';
-        addToWatchlist(`${marketPrefix}${code}`);
+      if (stock && !isInWatchlist(stock.routeCode)) {
+        addToWatchlist(stock.routeCode);
         addedCount++;
       }
     });
@@ -1494,7 +1293,9 @@ export function EndOfDayPicker() {
 
       {/* 加载遮罩 */}
       <AnimatePresence>
-        {isLoading && <LoadingOverlay progress={loadingProgress} />}
+        {isLoading && (
+          <LoadingOverlay progress={loadingProgress} onCancel={handleCancelAnalysis} />
+        )}
       </AnimatePresence>
     </div>
   );

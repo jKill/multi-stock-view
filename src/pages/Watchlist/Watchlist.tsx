@@ -18,9 +18,12 @@ import {
   Download,
   Upload,
   GripVertical,
+  Columns3,
+  Bell,
 } from 'lucide-react';
 import { Card, Button, Loading, Empty, useToast } from '@/components/common';
 import { usePolling } from '@/hooks';
+import { useAppSettings } from '@/contexts';
 import { getAllQuotesByCodes } from '@/services/sdk';
 import {
   getWatchlistGroups,
@@ -31,6 +34,11 @@ import {
   batchRemoveFromWatchlist,
   batchAddToWatchlist,
   reorderWatchlist,
+  deleteAlertRule,
+  getAlertRules,
+  getTableColumns,
+  saveTableColumns,
+  updateAlertRule,
 } from '@/services/storage';
 import {
   formatPrice,
@@ -40,7 +48,7 @@ import {
   getChangeColorClass,
   normalizeStockCode,
 } from '@/utils/format';
-import type { WatchlistGroup } from '@/types';
+import type { AlertRule, ColumnConfig, WatchlistGroup } from '@/types';
 import type { FullQuote } from 'stock-sdk';
 import styles from './Watchlist.module.css';
 
@@ -56,9 +64,74 @@ const SORT_OPTIONS: { field: SortField; label: string }[] = [
   { field: 'totalMarketCap', label: '市值' },
 ];
 
+const DEFAULT_COLUMNS: ColumnConfig[] = [
+  { key: 'name', label: '名称/代码', visible: true },
+  { key: 'price', label: '现价', visible: true },
+  { key: 'change', label: '涨跌幅', visible: true },
+  { key: 'amount', label: '成交额', visible: true },
+  { key: 'turnover', label: '换手', visible: true },
+];
+
+function createInitialColumns() {
+  const storedColumns = getTableColumns('watchlist');
+  if (!storedColumns) {
+    return DEFAULT_COLUMNS;
+  }
+
+  return DEFAULT_COLUMNS.map((column) => ({
+    ...column,
+    ...storedColumns.find((item) => item.key === column.key),
+  }));
+}
+
+function matchesAlertRule(rule: AlertRule, quote: FullQuote) {
+  switch (rule.type) {
+    case 'price_gte':
+      return quote.price >= rule.value;
+    case 'price_lte':
+      return quote.price <= rule.value;
+    case 'change_percent_gte':
+      return quote.changePercent >= rule.value;
+    case 'change_percent_lte':
+      return quote.changePercent <= rule.value;
+    case 'amount_gte':
+      return (quote.amount ?? 0) >= rule.value;
+    case 'near_limit_up':
+      return quote.limitUp !== null && quote.price >= quote.limitUp * (1 - rule.value / 100);
+    case 'near_limit_down':
+      return (
+        quote.limitDown !== null && quote.price <= quote.limitDown * (1 + rule.value / 100)
+      );
+    default:
+      return false;
+  }
+}
+
+function formatAlertRule(rule: AlertRule) {
+  switch (rule.type) {
+    case 'price_gte':
+      return `价格 >= ${rule.value}`;
+    case 'price_lte':
+      return `价格 <= ${rule.value}`;
+    case 'change_percent_gte':
+      return `涨幅 >= ${rule.value}%`;
+    case 'change_percent_lte':
+      return `涨幅 <= ${rule.value}%`;
+    case 'amount_gte':
+      return `成交额 >= ${rule.value}`;
+    case 'near_limit_up':
+      return `接近涨停 ${rule.value}%`;
+    case 'near_limit_down':
+      return `接近跌停 ${rule.value}%`;
+    default:
+      return rule.type;
+  }
+}
+
 export function Watchlist() {
   const navigate = useNavigate();
   const toast = useToast();
+  const { getRefreshInterval } = useAppSettings();
 
   // 初始化分组数据
   const initialGroups = useMemo(() => getWatchlistGroups(), []);
@@ -84,6 +157,9 @@ export function Watchlist() {
   // 导入导出
   const [showImportModal, setShowImportModal] = useState(false);
   const [importText, setImportText] = useState('');
+  const [columns, setColumns] = useState<ColumnConfig[]>(createInitialColumns);
+  const [showColumnPanel, setShowColumnPanel] = useState(false);
+  const [showAlertPanel, setShowAlertPanel] = useState(false);
 
   // 拖拽
   const [draggedCode, setDraggedCode] = useState<string | null>(null);
@@ -91,6 +167,10 @@ export function Watchlist() {
   // 当前分组
   const activeGroup = groups.find((g) => g.id === activeGroupId);
   const activeCodes = useMemo(() => activeGroup?.codes || [], [activeGroup?.codes]);
+  const visibleColumns = useMemo(
+    () => columns.filter((column) => column.visible).map((column) => column.key),
+    [columns]
+  );
 
   const normalizedActiveCodes = useMemo(() => {
     const codes = new Set<string>();
@@ -102,6 +182,13 @@ export function Watchlist() {
     });
     return Array.from(codes);
   }, [activeCodes]);
+  const groupAlerts = useMemo(
+    () =>
+      getAlertRules().filter((rule) =>
+        normalizedActiveCodes.includes(normalizeStockCode(rule.code))
+      ),
+    [normalizedActiveCodes]
+  );
 
   // 计算加载状态
   const isEmptyGroup = useMemo(() => {
@@ -131,14 +218,42 @@ export function Watchlist() {
       });
 
       setQuotes(map);
+
+      const now = Date.now();
+      const triggered: AlertRule[] = [];
+
+      getAlertRules()
+        .filter((rule) => rule.enabled)
+        .forEach((rule) => {
+          const normalized = normalizeStockCode(rule.code);
+          const currentQuote = map.get(normalized);
+          if (!currentQuote) {
+            return;
+          }
+
+          if (now - rule.lastTriggeredAt < rule.cooldownSec * 1000) {
+            return;
+          }
+
+          if (!matchesAlertRule(rule, currentQuote)) {
+            return;
+          }
+
+          updateAlertRule(rule.id, { lastTriggeredAt: now });
+          triggered.push(rule);
+        });
+
+      triggered.slice(0, 3).forEach((rule) => {
+        toast.info(`${rule.name} 触发告警: ${formatAlertRule(rule)}`);
+      });
     } catch (error) {
       console.error('Fetch quotes error:', error);
     }
-  }, [normalizedActiveCodes]);
+  }, [normalizedActiveCodes, toast]);
 
   // 轮询（优化：从 5s 改为 10s，减少 API 请求）
   usePolling(fetchQuotes, {
-    interval: 10000,
+    interval: getRefreshInterval('list'),
     enabled: normalizedActiveCodes.length > 0,
     immediate: true,
   });
@@ -259,15 +374,38 @@ export function Watchlist() {
       return;
     }
 
-    const addedCount = batchAddToWatchlist(codes, activeGroupId);
+    const validCodes = new Set<string>();
+    const invalidCodes = new Set<string>();
+
+    codes.forEach((code) => {
+      const normalized = normalizeStockCode(code);
+      if (/^(sh|sz|bj)\d{6}$/i.test(normalized)) {
+        validCodes.add(normalized);
+      } else {
+        invalidCodes.add(code);
+      }
+    });
+
+    if (validCodes.size === 0) {
+      toast.warning('未识别到有效的 A 股代码');
+      return;
+    }
+
+    const addedCount = batchAddToWatchlist(Array.from(validCodes), activeGroupId);
     setGroups(getWatchlistGroups());
     setImportText('');
     setShowImportModal(false);
     
     if (addedCount > 0) {
-      toast.success(`已导入 ${addedCount} 只股票`);
+      const suffix =
+        invalidCodes.size > 0 ? `，已跳过 ${invalidCodes.size} 个无效代码` : '';
+      toast.success(`已导入 ${addedCount} 只股票${suffix}`);
     } else {
-      toast.info('所有股票已在自选中');
+      if (invalidCodes.size > 0) {
+        toast.warning(`未导入新股票，且跳过了 ${invalidCodes.size} 个无效代码`);
+      } else {
+        toast.info('所有股票已在自选中');
+      }
     }
   }, [importText, activeGroupId, toast]);
 
@@ -297,6 +435,16 @@ export function Watchlist() {
 
   const handleDragEnd = useCallback(() => {
     setDraggedCode(null);
+  }, []);
+
+  const handleToggleColumn = useCallback((columnKey: string) => {
+    setColumns((prev) => {
+      const next = prev.map((column) =>
+        column.key === columnKey ? { ...column, visible: !column.visible } : column
+      );
+      saveTableColumns('watchlist', next);
+      return next;
+    });
   }, []);
 
   // 排序后的股票列表
@@ -434,6 +582,20 @@ export function Watchlist() {
                   >
                     {showSelectMode ? <X size={14} /> : <CheckSquare size={14} />}
                   </button>
+                  <button
+                    className={`${styles.toolBtn} ${showColumnPanel ? styles.active : ''}`}
+                    onClick={() => setShowColumnPanel((prev) => !prev)}
+                    title="列设置"
+                  >
+                    <Columns3 size={14} />
+                  </button>
+                  <button
+                    className={`${styles.toolBtn} ${showAlertPanel ? styles.active : ''}`}
+                    onClick={() => setShowAlertPanel((prev) => !prev)}
+                    title="告警中心"
+                  >
+                    <Bell size={14} />
+                  </button>
                 </>
               )}
             </div>
@@ -454,6 +616,47 @@ export function Watchlist() {
             />
           ) : (
             <>
+              {showColumnPanel && (
+                <div className={styles.columnPanel}>
+                  {columns.map((column) => (
+                    <label key={column.key} className={styles.columnOption}>
+                      <input
+                        type="checkbox"
+                        checked={column.visible}
+                        onChange={() => handleToggleColumn(column.key)}
+                      />
+                      <span>{column.label}</span>
+                    </label>
+                  ))}
+                </div>
+              )}
+
+              {showAlertPanel && (
+                <div className={styles.alertPanel}>
+                  {groupAlerts.length === 0 ? (
+                    <span className={styles.alertEmpty}>当前分组暂无本地告警</span>
+                  ) : (
+                    groupAlerts.map((rule) => (
+                      <div key={rule.id} className={styles.alertRow}>
+                        <div className={styles.alertInfo}>
+                          <span className={styles.alertName}>{rule.name}</span>
+                          <span className={styles.alertDesc}>{formatAlertRule(rule)}</span>
+                        </div>
+                        <button
+                          className={styles.alertRemoveBtn}
+                          onClick={() => {
+                            deleteAlertRule(rule.id);
+                            setGroups(getWatchlistGroups());
+                          }}
+                        >
+                          <Trash2 size={14} />
+                        </button>
+                      </div>
+                    ))
+                  )}
+                </div>
+              )}
+
               {/* 排序栏 */}
               <div className={styles.sortBar}>
                 <div className={styles.sortSection}>
@@ -493,11 +696,21 @@ export function Watchlist() {
                 <div className={styles.tableHeader}>
                   {showSelectMode && <span className={styles.colSelect}></span>}
                   {sortField === 'default' && <span className={styles.colDrag}></span>}
-                  <span className={styles.colName}>名称/代码</span>
-                  <span className={styles.colPrice}>现价</span>
-                  <span className={styles.colChange}>涨跌幅</span>
-                  <span className={styles.colAmount}>成交额</span>
-                  <span className={styles.colTurnover}>换手</span>
+                  {visibleColumns.includes('name') && (
+                    <span className={styles.colName}>名称/代码</span>
+                  )}
+                  {visibleColumns.includes('price') && (
+                    <span className={styles.colPrice}>现价</span>
+                  )}
+                  {visibleColumns.includes('change') && (
+                    <span className={styles.colChange}>涨跌幅</span>
+                  )}
+                  {visibleColumns.includes('amount') && (
+                    <span className={styles.colAmount}>成交额</span>
+                  )}
+                  {visibleColumns.includes('turnover') && (
+                    <span className={styles.colTurnover}>换手</span>
+                  )}
                   <span className={styles.colAction}>操作</span>
                 </div>
 
@@ -536,22 +749,32 @@ export function Watchlist() {
                               <GripVertical size={14} className={styles.dragHandle} />
                             </div>
                           )}
-                          <div className={styles.colName}>
-                            <span className={styles.stockName}>{quote.name}</span>
-                            <span className={styles.stockCode}>{quote.code}</span>
-                          </div>
-                          <span className={`${styles.colPrice} ${getChangeColorClass(quote.changePercent)}`}>
-                            {formatPrice(quote.price)}
-                          </span>
-                          <span className={`${styles.colChange} ${getChangeColorClass(quote.changePercent)}`}>
-                            {formatPercent(quote.changePercent)}
-                          </span>
-                          <span className={styles.colAmount}>
-                            {formatAmount(quote.amount)}
-                          </span>
-                          <span className={styles.colTurnover}>
-                            {formatTurnover(quote.turnoverRate)}
-                          </span>
+                          {visibleColumns.includes('name') && (
+                            <div className={styles.colName}>
+                              <span className={styles.stockName}>{quote.name}</span>
+                              <span className={styles.stockCode}>{quote.code}</span>
+                            </div>
+                          )}
+                          {visibleColumns.includes('price') && (
+                            <span className={`${styles.colPrice} ${getChangeColorClass(quote.changePercent)}`}>
+                              {formatPrice(quote.price)}
+                            </span>
+                          )}
+                          {visibleColumns.includes('change') && (
+                            <span className={`${styles.colChange} ${getChangeColorClass(quote.changePercent)}`}>
+                              {formatPercent(quote.changePercent)}
+                            </span>
+                          )}
+                          {visibleColumns.includes('amount') && (
+                            <span className={styles.colAmount}>
+                              {formatAmount(quote.amount)}
+                            </span>
+                          )}
+                          {visibleColumns.includes('turnover') && (
+                            <span className={styles.colTurnover}>
+                              {formatTurnover(quote.turnoverRate)}
+                            </span>
+                          )}
                           <div className={styles.colAction}>
                             <button
                               className={styles.removeBtn}

@@ -43,6 +43,35 @@ export default defineConfig(({ mode }) => {
     // 生产环境生成 source map
     build: {
       sourcemap: mode === 'production',
+      rollupOptions: {
+        output: {
+          manualChunks(id) {
+            if (!id.includes('node_modules')) {
+              return;
+            }
+
+            if (id.includes('echarts-for-react')) {
+              return;
+            }
+
+            if (id.includes('/echarts/') || id.includes('/zrender/')) {
+              return 'echarts-vendor';
+            }
+
+            if (id.includes('framer-motion')) {
+              return 'motion-vendor';
+            }
+
+            if (
+              id.includes('react') ||
+              id.includes('react-dom') ||
+              id.includes('react-router')
+            ) {
+              return 'react-vendor';
+            }
+          },
+        },
+      },
     },
   }
 })

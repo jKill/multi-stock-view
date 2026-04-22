@@ -50,6 +50,9 @@ export interface IndicatorConfig {
   boll: { period: number; stdDev: number };
   kdj: { period: number; kPeriod: number; dPeriod: number };
   rsi: number[];
+  dmi: { period: number; adxPeriod: number };
+  sar: { afStart: number; afIncrement: number; afMax: number };
+  kc: { emaPeriod: number; atrPeriod: number; multiplier: number };
 }
 
 /** 表格列配置 */

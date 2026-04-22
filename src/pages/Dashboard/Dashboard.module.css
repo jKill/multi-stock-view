@@ -6,6 +6,46 @@
   gap: var(--spacing-xl);
 }
 
+.statsGrid {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: var(--spacing-md);
+}
+
+.statCard {
+  display: flex;
+  flex-direction: column;
+  gap: var(--spacing-sm);
+}
+
+.statValueRow {
+  display: flex;
+  align-items: baseline;
+  gap: var(--spacing-sm);
+  font-size: var(--font-size-2xl);
+  font-weight: 700;
+  font-family: var(--font-mono);
+}
+
+.statValueLarge {
+  font-size: var(--font-size-xl);
+  font-weight: 700;
+  color: var(--text-primary);
+  font-family: var(--font-mono);
+}
+
+.statDivider {
+  color: var(--text-tertiary);
+}
+
+.statMeta {
+  display: flex;
+  justify-content: space-between;
+  gap: var(--spacing-sm);
+  font-size: var(--font-size-xs);
+  color: var(--text-tertiary);
+}
+
 /* 指数卡片区 */
 .indices {
   display: grid;
@@ -286,12 +326,20 @@
 
 /* 响应式 */
 @media (max-width: 1200px) {
+  .statsGrid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
   .mainGrid {
     grid-template-columns: 1fr;
   }
 }
 
 @media (max-width: 768px) {
+  .statsGrid {
+    grid-template-columns: 1fr;
+  }
+
   .indices {
     grid-template-columns: repeat(2, 1fr);
   }

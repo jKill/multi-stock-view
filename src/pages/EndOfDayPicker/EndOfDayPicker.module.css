@@ -684,6 +684,21 @@
   font-family: var(--font-mono);
 }
 
+.cancelAnalysisBtn {
+  display: flex;
+  align-items: center;
+  gap: var(--spacing-xs);
+  padding: var(--spacing-sm) var(--spacing-md);
+  border-radius: var(--radius-md);
+  color: white;
+  background: var(--color-error);
+  transition: background var(--transition-fast);
+}
+
+.cancelAnalysisBtn:hover {
+  background: #dc2626;
+}
+
 /* 方案按钮样式 */
 .schemeBtn,
 .recentBtn {

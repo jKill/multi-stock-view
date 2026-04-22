@@ -94,6 +94,37 @@
   border-color: var(--border-focus);
 }
 
+.textInput,
+.numberInput {
+  padding: var(--spacing-sm) var(--spacing-md);
+  font-size: var(--font-size-sm);
+  color: var(--text-primary);
+  background: var(--bg-tertiary);
+  border: 1px solid var(--border-primary);
+  border-radius: var(--radius-md);
+}
+
+.textInput {
+  min-width: 180px;
+}
+
+.numberInput {
+  width: 84px;
+  font-family: var(--font-mono);
+}
+
+.textInput:focus,
+.numberInput:focus {
+  outline: none;
+  border-color: var(--border-focus);
+}
+
+.inlineInputs {
+  display: flex;
+  gap: var(--spacing-sm);
+  flex-wrap: wrap;
+}
+
 /* 颜色模式 */
 .colorModeOptions {
   display: flex;
@@ -197,5 +228,10 @@
 
   .colorModeBtn {
     justify-content: center;
+  }
+
+  .textInput,
+  .inlineInputs {
+    width: 100%;
   }
 }

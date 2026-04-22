@@ -46,6 +46,9 @@ const DEFAULT_SETTINGS: AppSettings = {
     boll: { period: 20, stdDev: 2 },
     kdj: { period: 9, kPeriod: 3, dPeriod: 3 },
     rsi: [6, 12, 24],
+    dmi: { period: 14, adxPeriod: 14 },
+    sar: { afStart: 0.02, afIncrement: 0.02, afMax: 0.2 },
+    kc: { emaPeriod: 20, atrPeriod: 10, multiplier: 2 },
   },
 };
 
@@ -343,7 +346,64 @@ export function getAlertsByCode(code: string): AlertRule[] {
  */
 export function getSettings(): AppSettings {
   const data = localStorage.getItem(STORAGE_KEYS.SETTINGS);
-  return safeJsonParse(data, DEFAULT_SETTINGS);
+  const legacyHeatmapConfig = safeJsonParse(
+    localStorage.getItem(STORAGE_KEYS.HEATMAP_CONFIG),
+    DEFAULT_SETTINGS.heatmapConfig
+  );
+  const legacyIndicatorConfig = safeJsonParse(
+    localStorage.getItem(STORAGE_KEYS.INDICATOR_CONFIG),
+    DEFAULT_SETTINGS.indicatorConfig
+  );
+  const parsed = safeJsonParse<Partial<AppSettings>>(data, {});
+
+  return {
+    ...DEFAULT_SETTINGS,
+    ...parsed,
+    refreshInterval: {
+      ...DEFAULT_SETTINGS.refreshInterval,
+      ...parsed.refreshInterval,
+    },
+    heatmapConfig: {
+      ...DEFAULT_SETTINGS.heatmapConfig,
+      ...legacyHeatmapConfig,
+      ...parsed.heatmapConfig,
+    },
+    indicatorConfig: {
+      ...DEFAULT_SETTINGS.indicatorConfig,
+      ...legacyIndicatorConfig,
+      ...parsed.indicatorConfig,
+      macd: {
+        ...DEFAULT_SETTINGS.indicatorConfig.macd,
+        ...legacyIndicatorConfig.macd,
+        ...parsed.indicatorConfig?.macd,
+      },
+      boll: {
+        ...DEFAULT_SETTINGS.indicatorConfig.boll,
+        ...legacyIndicatorConfig.boll,
+        ...parsed.indicatorConfig?.boll,
+      },
+      kdj: {
+        ...DEFAULT_SETTINGS.indicatorConfig.kdj,
+        ...legacyIndicatorConfig.kdj,
+        ...parsed.indicatorConfig?.kdj,
+      },
+      dmi: {
+        ...DEFAULT_SETTINGS.indicatorConfig.dmi,
+        ...legacyIndicatorConfig.dmi,
+        ...parsed.indicatorConfig?.dmi,
+      },
+      sar: {
+        ...DEFAULT_SETTINGS.indicatorConfig.sar,
+        ...legacyIndicatorConfig.sar,
+        ...parsed.indicatorConfig?.sar,
+      },
+      kc: {
+        ...DEFAULT_SETTINGS.indicatorConfig.kc,
+        ...legacyIndicatorConfig.kc,
+        ...parsed.indicatorConfig?.kc,
+      },
+    },
+  };
 }
 
 /**
@@ -351,6 +411,14 @@ export function getSettings(): AppSettings {
  */
 export function saveSettings(settings: AppSettings): void {
   localStorage.setItem(STORAGE_KEYS.SETTINGS, JSON.stringify(settings));
+  localStorage.setItem(
+    STORAGE_KEYS.HEATMAP_CONFIG,
+    JSON.stringify(settings.heatmapConfig)
+  );
+  localStorage.setItem(
+    STORAGE_KEYS.INDICATOR_CONFIG,
+    JSON.stringify(settings.indicatorConfig)
+  );
 }
 
 /**
@@ -368,15 +436,18 @@ export function updateSettings(updates: Partial<AppSettings>): void {
  * 获取热力图配置
  */
 export function getHeatmapConfig(): HeatmapConfig {
-  const data = localStorage.getItem(STORAGE_KEYS.HEATMAP_CONFIG);
-  return safeJsonParse(data, DEFAULT_SETTINGS.heatmapConfig);
+  return getSettings().heatmapConfig;
 }
 
 /**
  * 保存热力图配置
  */
 export function saveHeatmapConfig(config: HeatmapConfig): void {
-  localStorage.setItem(STORAGE_KEYS.HEATMAP_CONFIG, JSON.stringify(config));
+  const settings = getSettings();
+  saveSettings({
+    ...settings,
+    heatmapConfig: config,
+  });
 }
 
 // ========== 指标配置 ==========
@@ -385,15 +456,18 @@ export function saveHeatmapConfig(config: HeatmapConfig): void {
  * 获取指标配置
  */
 export function getIndicatorConfig(): IndicatorConfig {
-  const data = localStorage.getItem(STORAGE_KEYS.INDICATOR_CONFIG);
-  return safeJsonParse(data, DEFAULT_SETTINGS.indicatorConfig);
+  return getSettings().indicatorConfig;
 }
 
 /**
  * 保存指标配置
  */
 export function saveIndicatorConfig(config: IndicatorConfig): void {
-  localStorage.setItem(STORAGE_KEYS.INDICATOR_CONFIG, JSON.stringify(config));
+  const settings = getSettings();
+  saveSettings({
+    ...settings,
+    indicatorConfig: config,
+  });
 }
 
 // ========== 表格列配置 ==========

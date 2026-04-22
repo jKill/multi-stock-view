@@ -4,16 +4,18 @@
 
 import { AppRouter } from './router';
 import { ToastProvider } from './components/common';
-import { ThemeProvider, BoardDataProvider } from './contexts';
+import { ThemeProvider, AppSettingsProvider, BoardDataProvider } from './contexts';
 
 export function App() {
   return (
     <ThemeProvider>
-      <BoardDataProvider>
-        <ToastProvider>
-          <AppRouter />
-        </ToastProvider>
-      </BoardDataProvider>
+      <AppSettingsProvider>
+        <BoardDataProvider>
+          <ToastProvider>
+            <AppRouter />
+          </ToastProvider>
+        </BoardDataProvider>
+      </AppSettingsProvider>
     </ThemeProvider>
   );
 }
