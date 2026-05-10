@@ -24,6 +24,8 @@ import {
   getAllAShareQuotes,
   getConceptConstituents,
   getIndustryConstituents,
+  getStockChanges,
+  getZTPool,
 } from '@/services/sdk';
 import { normalizeStockCode, parseStockCode } from '@/utils/format';
 import styles from './Scanner.module.css';
@@ -43,6 +45,8 @@ const POOL_SOURCES = [
   { key: 'watchlist', label: '自选股' },
   { key: 'board', label: '手选板块' },
   { key: 'ranking', label: '榜单 TopN' },
+  { key: 'zt_pool', label: '涨停/强势池' },
+  { key: 'stock_changes', label: '盘口异动池' },
 ] as const;
 
 const BOARD_TYPES = [
@@ -58,10 +62,28 @@ const RANKING_FIELDS = [
 
 const TOP_N_OPTIONS = [20, 50, 100];
 const BOARD_LIMIT_OPTIONS = [30, 50, 80];
+const ZT_POOL_TYPES = [
+  { key: 'zt', label: '涨停池' },
+  { key: 'strong', label: '强势股' },
+  { key: 'yesterday', label: '昨日涨停' },
+  { key: 'sub_new', label: '次新股' },
+  { key: 'broken', label: '炸板池' },
+  { key: 'dt', label: '跌停池' },
+] as const;
+const STOCK_CHANGE_TYPES = [
+  { key: 'rocket_launch', label: '火箭发射' },
+  { key: 'large_buy', label: '大笔买入' },
+  { key: 'big_buy_order', label: '大单扫货' },
+  { key: 'limit_up_seal', label: '封涨停板' },
+  { key: 'gap_up', label: '向上缺口' },
+  { key: 'high_60d', label: '60日新高' },
+] as const;
 
 type PoolSource = (typeof POOL_SOURCES)[number]['key'];
 type BoardType = (typeof BOARD_TYPES)[number]['key'];
 type RankingField = (typeof RANKING_FIELDS)[number]['key'];
+type ZTPoolType = (typeof ZT_POOL_TYPES)[number]['key'];
+type StockChangeType = (typeof STOCK_CHANGE_TYPES)[number]['key'];
 
 interface ScanResultRow {
   code: string;
@@ -92,7 +114,10 @@ export function Scanner() {
   const [selectedBoardCode, setSelectedBoardCode] = useState('');
   const [boardLimit, setBoardLimit] = useState(50);
   const [rankingField, setRankingField] = useState<RankingField>('amount');
-  const [rankingTopN, setRankingTopN] = useState(20);
+  const [poolTopN, setPoolTopN] = useState(20);
+  const [ztPoolType, setZtPoolType] = useState<ZTPoolType>('strong');
+  const [stockChangeType, setStockChangeType] =
+    useState<StockChangeType>('rocket_launch');
   const [isScanning, setIsScanning] = useState(false);
   const [scanProgress, setScanProgress] = useState<AnalysisProgress>({
     completed: 0,
@@ -137,13 +162,13 @@ export function Scanner() {
         const right = b[rankingField] ?? 0;
         return (right as number) - (left as number);
       })
-      .slice(0, rankingTopN)
+      .slice(0, poolTopN)
       .map((quote) => ({
         code: parseStockCode(normalizeStockCode(quote.code)).symbol || quote.code,
         routeCode: normalizeStockCode(quote.code),
         name: quote.name,
       }));
-  }, [rankingField, rankingTopN]);
+  }, [poolTopN, rankingField]);
 
   const resolveBoardPool = useCallback(async (): Promise<ScannerStockPoolItem[]> => {
     if (!selectedBoardCode) {
@@ -177,6 +202,38 @@ export function Scanner() {
     });
   }, []);
 
+  const resolveZTPoolSource = useCallback(async (): Promise<ScannerStockPoolItem[]> => {
+    const items = await getZTPool(ztPoolType);
+    return items.slice(0, poolTopN).map((item) => {
+      const routeCode = normalizeStockCode(item.code);
+      return {
+        code: parseStockCode(routeCode).symbol || item.code,
+        routeCode,
+        name: item.name,
+      };
+    });
+  }, [poolTopN, ztPoolType]);
+
+  const resolveStockChangePool = useCallback(async (): Promise<ScannerStockPoolItem[]> => {
+    const items = await getStockChanges(stockChangeType);
+    const deduped = new Map<string, ScannerStockPoolItem>();
+
+    for (const item of items) {
+      const routeCode = normalizeStockCode(item.code);
+      if (!routeCode || deduped.has(routeCode)) {
+        continue;
+      }
+
+      deduped.set(routeCode, {
+        code: parseStockCode(routeCode).symbol || item.code,
+        routeCode,
+        name: item.name,
+      });
+    }
+
+    return Array.from(deduped.values()).slice(0, poolTopN);
+  }, [poolTopN, stockChangeType]);
+
   const resolveStockPool = useCallback(async () => {
     if (poolSource === 'watchlist') {
       return resolveWatchlistPool();
@@ -186,8 +243,23 @@ export function Scanner() {
       return resolveBoardPool();
     }
 
+    if (poolSource === 'zt_pool') {
+      return resolveZTPoolSource();
+    }
+
+    if (poolSource === 'stock_changes') {
+      return resolveStockChangePool();
+    }
+
     return resolveRankingPool();
-  }, [poolSource, resolveBoardPool, resolveRankingPool, resolveWatchlistPool]);
+  }, [
+    poolSource,
+    resolveBoardPool,
+    resolveRankingPool,
+    resolveStockChangePool,
+    resolveWatchlistPool,
+    resolveZTPoolSource,
+  ]);
 
   const handleScan = useCallback(async () => {
     if (selectedSignals.length === 0) {
@@ -289,7 +361,7 @@ export function Scanner() {
           <ScanLine size={24} />
           信号扫描
         </h1>
-        <p className={styles.subtitle}>统一并发控制、支持取消的技术信号扫描器</p>
+        <p className={styles.subtitle}>统一并发控制、支持取消的技术信号扫描器，现已支持 1.9.0 动态股池</p>
       </motion.div>
 
       <div className={styles.content}>
@@ -353,14 +425,69 @@ export function Scanner() {
                     {TOP_N_OPTIONS.map((value) => (
                       <button
                         key={value}
-                        className={`${styles.topNButton} ${rankingTopN === value ? styles.active : ''}`}
-                        onClick={() => setRankingTopN(value)}
+                        className={`${styles.topNButton} ${poolTopN === value ? styles.active : ''}`}
+                        onClick={() => setPoolTopN(value)}
                       >
                         Top {value}
                       </button>
                     ))}
                   </div>
                   <p className={styles.helperText}>榜单来源为全市场 A 股实时行情</p>
+                </div>
+              )}
+
+              {poolSource === 'zt_pool' && (
+                <div className={styles.fieldBlock}>
+                  <Tabs
+                    items={ZT_POOL_TYPES.map((item) => ({ key: item.key, label: item.label }))}
+                    activeKey={ztPoolType}
+                    onChange={(key) => setZtPoolType(key as ZTPoolType)}
+                    size="sm"
+                  />
+                  <div className={styles.topNGroup}>
+                    {TOP_N_OPTIONS.map((value) => (
+                      <button
+                        key={value}
+                        className={`${styles.topNButton} ${poolTopN === value ? styles.active : ''}`}
+                        onClick={() => setPoolTopN(value)}
+                      >
+                        Top {value}
+                      </button>
+                    ))}
+                  </div>
+                  <p className={styles.helperText}>来源于 stock-sdk 1.9.0 涨停池/强势股动态股票池</p>
+                </div>
+              )}
+
+              {poolSource === 'stock_changes' && (
+                <div className={styles.fieldBlock}>
+                  <div className={styles.fieldRow}>
+                    <select
+                      className={styles.select}
+                      value={stockChangeType}
+                      onChange={(event) =>
+                        setStockChangeType(event.target.value as StockChangeType)
+                      }
+                    >
+                      {STOCK_CHANGE_TYPES.map((item) => (
+                        <option key={item.key} value={item.key}>
+                          {item.label}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+                  <div className={styles.topNGroup}>
+                    {TOP_N_OPTIONS.map((value) => (
+                      <button
+                        key={value}
+                        className={`${styles.topNButton} ${poolTopN === value ? styles.active : ''}`}
+                        onClick={() => setPoolTopN(value)}
+                      >
+                        Top {value}
+                      </button>
+                    ))}
+                  </div>
+                  <p className={styles.helperText}>来源于 stock-sdk 1.9.0 盘口异动流，已按股票去重</p>
                 </div>
               )}
 

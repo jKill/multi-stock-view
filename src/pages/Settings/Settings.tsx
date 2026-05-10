@@ -499,7 +499,7 @@ export function Settings() {
             <div className={styles.aboutInfo}>
               <p><strong>A 股看板</strong> v1.1.0</p>
               <p className={styles.aboutDesc}>
-                纯前端行情看板，核心数据能力来自 <strong>stock-sdk 1.8.0</strong>。
+                纯前端行情看板，核心数据能力来自 <strong>stock-sdk 1.9.0</strong>。
               </p>
               <p className={styles.aboutNote}>
                 <strong>数据说明：</strong>
@@ -507,6 +507,7 @@ export function Settings() {
               <ul className={styles.noteList}>
                 <li>成交量单位：手（1手=100股）</li>
                 <li>成交额单位：万元</li>
+                <li>资金流、北向、龙虎榜等新增数据默认使用元级展示</li>
                 <li>市值单位：亿元</li>
                 <li>仅 A 股详情页已完全接入，港股 / 美股 / 基金结果暂不跳详情</li>
               </ul>

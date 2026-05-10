@@ -89,6 +89,51 @@ export function formatAmount(value: number | null | undefined): string {
 }
 
 /**
+ * 格式化金额（元）
+ */
+export function formatYuanAmount(value: number | null | undefined): string {
+  if (value === null || value === undefined || isNaN(value)) {
+    return '--';
+  }
+
+  const absValue = Math.abs(value);
+  const sign = value < 0 ? '-' : '';
+
+  if (absValue >= 1000000000000) {
+    return `${sign}${(absValue / 1000000000000).toFixed(2)}万亿`;
+  }
+  if (absValue >= 100000000) {
+    return `${sign}${(absValue / 100000000).toFixed(2)}亿`;
+  }
+  if (absValue >= 10000) {
+    return `${sign}${(absValue / 10000).toFixed(2)}万`;
+  }
+
+  return `${sign}${absValue.toFixed(0)}元`;
+}
+
+/**
+ * 格式化通用大数（非金额）
+ */
+export function formatCompactNumber(value: number | null | undefined): string {
+  if (value === null || value === undefined || isNaN(value)) {
+    return '--';
+  }
+
+  const absValue = Math.abs(value);
+  const sign = value < 0 ? '-' : '';
+
+  if (absValue >= 100000000) {
+    return `${sign}${(absValue / 100000000).toFixed(2)}亿`;
+  }
+  if (absValue >= 10000) {
+    return `${sign}${(absValue / 10000).toFixed(2)}万`;
+  }
+
+  return `${sign}${absValue.toFixed(0)}`;
+}
+
+/**
  * 格式化市值（亿）
  */
 export function formatMarketCap(value: number | null | undefined): string {

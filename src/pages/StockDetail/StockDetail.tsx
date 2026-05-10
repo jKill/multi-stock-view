@@ -29,7 +29,9 @@ import {
   getFullQuotes,
   getFundFlow,
   getHistoryKline,
+  getIndividualFundFlow,
   getMinuteKline,
+  getNorthboundIndividual,
   getPanelLargeOrder,
   getTodayTimeline,
 } from '@/services/sdk';
@@ -46,6 +48,7 @@ import type { IndicatorConfig } from '@/types';
 import {
   formatAmount,
   formatChange,
+  formatCompactNumber,
   formatMarketCap,
   formatPercent,
   formatPrice,
@@ -53,10 +56,14 @@ import {
   formatTurnover,
   formatVolume,
   formatVolumeRatio,
+  formatYuanAmount,
   getChangeColorClass,
   normalizeStockCode,
 } from '@/utils/format';
 import styles from './StockDetail.module.css';
+
+type IndividualFundFlowRows = Awaited<ReturnType<typeof getIndividualFundFlow>>;
+type NorthboundIndividualRows = Awaited<ReturnType<typeof getNorthboundIndividual>>;
 
 const KLINE_PERIODS = [
   { key: 'daily', label: '日K' },
@@ -735,6 +742,10 @@ export function StockDetail() {
   const [klineData, setKlineData] = useState<KlineDataItem[]>([]);
   const [fundFlow, setFundFlow] = useState<FundFlow | null>(null);
   const [largeOrder, setLargeOrder] = useState<PanelLargeOrder | null>(null);
+  const [individualFundFlowHistory, setIndividualFundFlowHistory] =
+    useState<IndividualFundFlowRows>([]);
+  const [northboundHoldings, setNorthboundHoldings] =
+    useState<NorthboundIndividualRows>([]);
   const [dividends, setDividends] = useState<DividendDetail[]>([]);
   const [alerts, setAlerts] = useState(() => getAlertsByCode(normalizedCode));
 
@@ -874,14 +885,27 @@ export function StockDetail() {
     }
 
     try {
-      const [flowData] = await getFundFlow([normalizedCode]);
-      const [orderData] = await getPanelLargeOrder([normalizedCode]);
+      const [
+        [flowData],
+        [orderData],
+        individualFundFlowData,
+        northboundHoldingData,
+      ] = await Promise.all([
+        getFundFlow([normalizedCode]),
+        getPanelLargeOrder([normalizedCode]),
+        getIndividualFundFlow(normalizedCode, { period: 'daily' }),
+        getNorthboundIndividual(normalizedCode),
+      ]);
+
       if (flowData) {
         setFundFlow(flowData);
       }
       if (orderData) {
         setLargeOrder(orderData);
       }
+
+      setIndividualFundFlowHistory(individualFundFlowData.slice(-8));
+      setNorthboundHoldings(northboundHoldingData.slice(-8));
     } catch (error) {
       console.error('Fetch fund data error:', error);
     }
@@ -986,6 +1010,8 @@ export function StockDetail() {
     },
     [normalizedCode, toast]
   );
+
+  const latestNorthboundHolding = northboundHoldings.at(-1) ?? null;
 
   const timelineChartOption = useMemo(
     () =>
@@ -1216,7 +1242,7 @@ export function StockDetail() {
           </Card>
 
           {fundFlow && (
-            <Card title="资金流向">
+            <Card title="个股资金流">
               <div className={styles.fundFlow}>
                 <div className={styles.fundItem}>
                   <span className={styles.fundLabel}>主力净流入</span>
@@ -1241,6 +1267,31 @@ export function StockDetail() {
                   </span>
                 </div>
               </div>
+
+              {individualFundFlowHistory.length > 0 && (
+                <div className={styles.historySection}>
+                  <div className={styles.historySectionHeader}>近 8 日主力资金</div>
+                  <div className={styles.historyList}>
+                    {[...individualFundFlowHistory].reverse().map((item) => (
+                      <div key={item.date} className={styles.historyRow}>
+                        <span className={styles.historyDate}>{formatMaybeDate(item.date)}</span>
+                        <div className={styles.historyValueGroup}>
+                          <span
+                            className={`${styles.historyPrimary} ${getChangeColorClass(
+                              item.mainNetInflow
+                            )}`}
+                          >
+                            {formatYuanAmount(item.mainNetInflow)}
+                          </span>
+                          <span className={styles.historyMeta}>
+                            {formatPercent(item.mainNetInflowPercent)}
+                          </span>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
             </Card>
           )}
 
@@ -1274,6 +1325,60 @@ export function StockDetail() {
               </div>
             </Card>
           )}
+
+          <Card title="北向持仓">
+            {latestNorthboundHolding ? (
+              <div className={styles.historySection}>
+                <div className={styles.historyList}>
+                  <div className={styles.historyRow}>
+                    <span className={styles.historyDate}>最新持仓市值</span>
+                    <div className={styles.historyValueGroup}>
+                      <span className={styles.historyPrimary}>
+                        {formatYuanAmount(latestNorthboundHolding.holdMarketValue)}
+                      </span>
+                      <span className={styles.historyMeta}>
+                        {formatMaybeDate(latestNorthboundHolding.date)}
+                      </span>
+                    </div>
+                  </div>
+                  <div className={styles.historyRow}>
+                    <span className={styles.historyDate}>持股 / 流通占比</span>
+                    <div className={styles.historyValueGroup}>
+                      <span className={styles.historyPrimary}>
+                        {formatCompactNumber(latestNorthboundHolding.holdShares)} 股
+                      </span>
+                      <span className={styles.historyMeta}>
+                        {formatPercent(latestNorthboundHolding.holdRatioFloat, false)}
+                      </span>
+                    </div>
+                  </div>
+                </div>
+
+                <div className={styles.historySectionHeader}>近 8 日持仓变化</div>
+                <div className={styles.historyList}>
+                  {[...northboundHoldings].reverse().map((item) => (
+                    <div key={item.date} className={styles.historyRow}>
+                      <span className={styles.historyDate}>{formatMaybeDate(item.date)}</span>
+                      <div className={styles.historyValueGroup}>
+                        <span className={styles.historyPrimary}>
+                          {formatYuanAmount(item.holdMarketValue)}
+                        </span>
+                        <span
+                          className={`${styles.historyMeta} ${getChangeColorClass(
+                            item.changePercent
+                          )}`}
+                        >
+                          {formatPercent(item.changePercent)}
+                        </span>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            ) : (
+              <div className={styles.dividendEmpty}>当前股票暂无北向持仓样本</div>
+            )}
+          </Card>
 
           <Card title="分红 / 除权">
             {dividends.length === 0 ? (

@@ -14,6 +14,7 @@ import {
   getConceptKline,
   getIndustrySpot,
   getConceptSpot,
+  getSectorFundFlowHistory,
 } from '@/services/sdk';
 import { addToWatchlist, isInWatchlist } from '@/services/storage';
 import { useBoardData } from '@/contexts';
@@ -23,6 +24,7 @@ import {
   formatAmount,
   formatMarketCap,
   formatTurnover,
+  formatYuanAmount,
   getChangeColorClass,
 } from '@/utils/format';
 import type {
@@ -35,6 +37,8 @@ import type {
 } from 'stock-sdk';
 import { LazyEChart } from '@/components/charts/LazyEChart';
 import styles from './BoardDetail.module.css';
+
+type BoardFundFlowHistoryRows = Awaited<ReturnType<typeof getSectorFundFlowHistory>>;
 
 // K线周期
 const KLINE_PERIODS = [
@@ -53,6 +57,7 @@ export function BoardDetail() {
   const [constituents, setConstituents] = useState<(IndustryBoardConstituent | ConceptBoardConstituent)[]>([]);
   const [klineData, setKlineData] = useState<(IndustryBoardKline | ConceptBoardKline)[]>([]);
   const [spotData, setSpotData] = useState<(IndustryBoardSpot | ConceptBoardSpot)[]>([]);
+  const [fundFlowHistory, setFundFlowHistory] = useState<BoardFundFlowHistoryRows>([]);
 
   // UI 状态
   const [loading, setLoading] = useState(true);
@@ -106,11 +111,21 @@ export function BoardDetail() {
     }
   }, [code, isIndustry]);
 
+  const fetchFundFlowHistory = useCallback(async () => {
+    if (!code) return;
+    try {
+      const data = await getSectorFundFlowHistory(code, { period: 'daily' });
+      setFundFlowHistory(data.slice(-30));
+    } catch (error) {
+      console.error('Fetch board fund flow error:', error);
+    }
+  }, [code]);
+
   // 初始加载（只在板块代码变化时触发）
   useEffect(() => {
     const loadAll = async () => {
       setLoading(true);
-      await Promise.all([fetchConstituents(), fetchSpot()]);
+      await Promise.all([fetchConstituents(), fetchSpot(), fetchFundFlowHistory()]);
       await fetchKline();
       setLoading(false);
     };
@@ -188,6 +203,81 @@ export function BoardDetail() {
       ],
     };
   }, [klineData]);
+
+  const latestFundFlow = fundFlowHistory.at(-1) ?? null;
+
+  const fundFlowChartOption = useMemo(() => {
+    if (!fundFlowHistory.length) return {};
+
+    const computedStyle = window.getComputedStyle(document.documentElement);
+    const riseColor = computedStyle.getPropertyValue('--color-rise').trim() || '#ef4444';
+    const fallColor = computedStyle.getPropertyValue('--color-fall').trim() || '#22c55e';
+    const borderPrimary = computedStyle.getPropertyValue('--border-primary').trim() || '#333';
+    const borderSecondary = computedStyle.getPropertyValue('--border-secondary').trim() || '#222';
+    const textTertiary = computedStyle.getPropertyValue('--text-tertiary').trim() || '#666';
+    const bgElevated = computedStyle.getPropertyValue('--bg-elevated').trim() || '#1a1a1a';
+    const textPrimary = computedStyle.getPropertyValue('--text-primary').trim() || '#fff';
+
+    return {
+      animation: false,
+      grid: { left: 60, right: 50, top: 20, bottom: 30 },
+      xAxis: {
+        type: 'category',
+        data: fundFlowHistory.map((item) => item.date),
+        axisLine: { lineStyle: { color: borderPrimary } },
+        axisLabel: { color: textTertiary, fontSize: 10 },
+      },
+      yAxis: [
+        {
+          type: 'value',
+          axisLine: { show: false },
+          axisLabel: {
+            color: textTertiary,
+            fontSize: 10,
+            formatter: (value: number) => `${value.toFixed(1)}亿`,
+          },
+          splitLine: { lineStyle: { color: borderSecondary, type: 'dashed' } },
+        },
+        {
+          type: 'value',
+          axisLine: { show: false },
+          axisLabel: {
+            color: textTertiary,
+            fontSize: 10,
+            formatter: (value: number) => `${value.toFixed(1)}%`,
+          },
+          splitLine: { show: false },
+        },
+      ],
+      series: [
+        {
+          name: '主力净流入',
+          type: 'bar',
+          data: fundFlowHistory.map((item) =>
+            item.mainNetInflow === null ? null : item.mainNetInflow / 100000000
+          ),
+          itemStyle: {
+            color: (params: { value: number }) => (params.value >= 0 ? riseColor : fallColor),
+          },
+          barMaxWidth: 18,
+        },
+        {
+          name: '净占比',
+          type: 'line',
+          yAxisIndex: 1,
+          data: fundFlowHistory.map((item) => item.mainNetInflowPercent),
+          symbol: 'none',
+          lineStyle: { width: 1.5, color: '#58a6ff' },
+        },
+      ],
+      tooltip: {
+        trigger: 'axis',
+        backgroundColor: bgElevated,
+        borderColor: borderPrimary,
+        textStyle: { color: textPrimary, fontSize: 12 },
+      },
+    };
+  }, [fundFlowHistory]);
 
   // 跳转个股
   const handleStockClick = (stockCode: string) => {
@@ -302,6 +392,60 @@ export function BoardDetail() {
                   </span>
                 </div>
               ))}
+            </div>
+          </Card>
+        )}
+
+        {fundFlowHistory.length > 0 && latestFundFlow && (
+          <Card title="板块资金流">
+            <div className={styles.flowSummary}>
+              <div className={styles.flowSummaryItem}>
+                <span className={styles.flowSummaryLabel}>主力净流入</span>
+                <span
+                  className={`${styles.flowSummaryValue} ${getChangeColorClass(
+                    latestFundFlow.mainNetInflow
+                  )}`}
+                >
+                  {formatYuanAmount(latestFundFlow.mainNetInflow)}
+                </span>
+              </div>
+              <div className={styles.flowSummaryItem}>
+                <span className={styles.flowSummaryLabel}>净占比</span>
+                <span
+                  className={`${styles.flowSummaryValue} ${getChangeColorClass(
+                    latestFundFlow.mainNetInflowPercent
+                  )}`}
+                >
+                  {formatPercent(latestFundFlow.mainNetInflowPercent)}
+                </span>
+              </div>
+              <div className={styles.flowSummaryItem}>
+                <span className={styles.flowSummaryLabel}>超大单净流入</span>
+                <span
+                  className={`${styles.flowSummaryValue} ${getChangeColorClass(
+                    latestFundFlow.superLargeNetInflow
+                  )}`}
+                >
+                  {formatYuanAmount(latestFundFlow.superLargeNetInflow)}
+                </span>
+              </div>
+              <div className={styles.flowSummaryItem}>
+                <span className={styles.flowSummaryLabel}>小单净流入</span>
+                <span
+                  className={`${styles.flowSummaryValue} ${getChangeColorClass(
+                    latestFundFlow.smallNetInflow
+                  )}`}
+                >
+                  {formatYuanAmount(latestFundFlow.smallNetInflow)}
+                </span>
+              </div>
+            </div>
+            <div className={styles.flowChart}>
+              <LazyEChart
+                option={fundFlowChartOption}
+                style={{ height: '100%', width: '100%' }}
+                notMerge
+              />
             </div>
           </Card>
         )}

@@ -50,6 +50,13 @@ const DEFAULT_TTL = {
   fundFlow: 30000, // 资金流 30s（从 10s 增加）
   timeline: 5000, // 分时 5s（从 3s 增加）
   dividends: 21600000, // 分红数据 6h
+  capitalHistory: 30000, // 资金流历史 30s
+  northbound: 30000, // 北向资金 30s
+  stockChanges: 15000, // 异动池 15s
+  boardChanges: 30000, // 板块异动 30s
+  dragonTiger: 3600000, // 龙虎榜 1h
+  blockTrade: 3600000, // 大宗交易 1h
+  margin: 21600000, // 融资融券 6h
 };
 
 function normalizeSearchResult(item: SDKSearchResult): AppSearchResult {
@@ -401,6 +408,208 @@ export async function getPanelLargeOrder(codes: string[]) {
   return withCache(key, DEFAULT_TTL.fundFlow, () =>
     sdk.getPanelLargeOrder(codes)
   );
+}
+
+/**
+ * 获取个股历史资金流
+ */
+export async function getIndividualFundFlow(
+  symbol: string,
+  options?: {
+    period?: 'daily' | 'weekly' | 'monthly';
+  }
+) {
+  const key = getCacheKey('getIndividualFundFlow', symbol, options);
+  return withCache(key, DEFAULT_TTL.capitalHistory, () =>
+    sdk.getIndividualFundFlow(symbol, options)
+  );
+}
+
+/**
+ * 获取大盘资金流
+ */
+export async function getMarketFundFlow() {
+  const key = getCacheKey('getMarketFundFlow');
+  return withCache(key, DEFAULT_TTL.capitalHistory, () => sdk.getMarketFundFlow());
+}
+
+/**
+ * 获取个股资金流排行
+ */
+export async function getFundFlowRank(options?: {
+  indicator?: 'today' | '3day' | '5day' | '10day';
+}) {
+  const key = getCacheKey('getFundFlowRank', options);
+  return withCache(key, DEFAULT_TTL.fundFlow, () => sdk.getFundFlowRank(options));
+}
+
+/**
+ * 获取板块资金流排行
+ */
+export async function getSectorFundFlowRank(options?: {
+  indicator?: 'today' | '3day' | '5day' | '10day';
+  sectorType?: 'industry' | 'concept' | 'region';
+}) {
+  const key = getCacheKey('getSectorFundFlowRank', options);
+  return withCache(key, DEFAULT_TTL.fundFlow, () =>
+    sdk.getSectorFundFlowRank(options)
+  );
+}
+
+/**
+ * 获取单个板块历史资金流
+ */
+export async function getSectorFundFlowHistory(
+  symbol: string,
+  options?: {
+    period?: 'daily' | 'weekly' | 'monthly';
+  }
+) {
+  const key = getCacheKey('getSectorFundFlowHistory', symbol, options);
+  return withCache(key, DEFAULT_TTL.capitalHistory, () =>
+    sdk.getSectorFundFlowHistory(symbol, options)
+  );
+}
+
+/**
+ * 获取北向/南向分时资金
+ */
+export async function getNorthboundMinute(direction: 'north' | 'south' = 'north') {
+  const key = getCacheKey('getNorthboundMinute', direction);
+  return withCache(key, DEFAULT_TTL.northbound, () => sdk.getNorthboundMinute(direction));
+}
+
+/**
+ * 获取北向/南向资金汇总
+ */
+export async function getNorthboundFlowSummary() {
+  const key = getCacheKey('getNorthboundFlowSummary');
+  return withCache(key, DEFAULT_TTL.northbound, () => sdk.getNorthboundFlowSummary());
+}
+
+/**
+ * 获取北向持股排行
+ */
+export async function getNorthboundHoldingRank(options?: {
+  market?: 'all' | 'shanghai' | 'shenzhen';
+  period?: 'today' | '3day' | '5day' | '10day' | 'month' | 'quarter' | 'year';
+  date?: string;
+}) {
+  const key = getCacheKey('getNorthboundHoldingRank', options);
+  return withCache(key, DEFAULT_TTL.northbound, () => sdk.getNorthboundHoldingRank(options));
+}
+
+/**
+ * 获取北向/南向资金历史
+ */
+export async function getNorthboundHistory(
+  direction: 'north' | 'south' = 'north',
+  options?: {
+    startDate?: string;
+    endDate?: string;
+  }
+) {
+  const key = getCacheKey('getNorthboundHistory', direction, options);
+  return withCache(key, DEFAULT_TTL.northbound, () =>
+    sdk.getNorthboundHistory(direction, options)
+  );
+}
+
+/**
+ * 获取个股北向持仓历史
+ */
+export async function getNorthboundIndividual(
+  symbol: string,
+  options?: {
+    startDate?: string;
+    endDate?: string;
+  }
+) {
+  const key = getCacheKey('getNorthboundIndividual', symbol, options);
+  return withCache(key, DEFAULT_TTL.northbound, () =>
+    sdk.getNorthboundIndividual(symbol, options)
+  );
+}
+
+/**
+ * 获取涨停股池
+ */
+export async function getZTPool(
+  type: 'zt' | 'yesterday' | 'strong' | 'sub_new' | 'broken' | 'dt' = 'zt',
+  date?: string
+) {
+  const key = getCacheKey('getZTPool', type, date);
+  return withCache(key, DEFAULT_TTL.stockChanges, () => sdk.getZTPool(type, date));
+}
+
+/**
+ * 获取盘口异动
+ */
+export async function getStockChanges(
+  type:
+    | 'rocket_launch'
+    | 'quick_rebound'
+    | 'large_buy'
+    | 'limit_up_seal'
+    | 'limit_down_open'
+    | 'big_buy_order'
+    | 'auction_up'
+    | 'high_open_5d'
+    | 'gap_up'
+    | 'high_60d'
+    | 'surge_60d'
+    | 'accelerate_down'
+    | 'high_dive'
+    | 'large_sell'
+    | 'limit_down_seal'
+    | 'limit_up_open'
+    | 'big_sell_order'
+    | 'auction_down'
+    | 'low_open_5d'
+    | 'gap_down'
+    | 'low_60d'
+    | 'drop_60d' = 'large_buy'
+) {
+  const key = getCacheKey('getStockChanges', type);
+  return withCache(key, DEFAULT_TTL.stockChanges, () => sdk.getStockChanges(type));
+}
+
+/**
+ * 获取板块异动
+ */
+export async function getBoardChanges() {
+  const key = getCacheKey('getBoardChanges');
+  return withCache(key, DEFAULT_TTL.boardChanges, () => sdk.getBoardChanges());
+}
+
+/**
+ * 获取龙虎榜详情
+ */
+export async function getDragonTigerDetail(options: {
+  startDate: string;
+  endDate: string;
+}) {
+  const key = getCacheKey('getDragonTigerDetail', options);
+  return withCache(key, DEFAULT_TTL.dragonTiger, () => sdk.getDragonTigerDetail(options));
+}
+
+/**
+ * 获取大宗交易明细
+ */
+export async function getBlockTradeDetail(options?: {
+  startDate?: string;
+  endDate?: string;
+}) {
+  const key = getCacheKey('getBlockTradeDetail', options);
+  return withCache(key, DEFAULT_TTL.blockTrade, () => sdk.getBlockTradeDetail(options));
+}
+
+/**
+ * 获取融资融券账户统计
+ */
+export async function getMarginAccountInfo() {
+  const key = getCacheKey('getMarginAccountInfo');
+  return withCache(key, DEFAULT_TTL.margin, () => sdk.getMarginAccountInfo());
 }
 
 // ========== 搜索 API ==========

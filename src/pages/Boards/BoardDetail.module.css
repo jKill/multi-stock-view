@@ -103,6 +103,37 @@
   height: 300px;
 }
 
+.flowSummary {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: var(--spacing-md);
+  margin-bottom: var(--spacing-lg);
+}
+
+.flowSummaryItem {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  padding: var(--spacing-sm);
+  background: var(--bg-tertiary);
+  border-radius: var(--radius-md);
+}
+
+.flowSummaryLabel {
+  font-size: var(--font-size-xs);
+  color: var(--text-tertiary);
+}
+
+.flowSummaryValue {
+  font-size: var(--font-size-sm);
+  font-family: var(--font-mono);
+  color: var(--text-primary);
+}
+
+.flowChart {
+  height: 240px;
+}
+
 /* Spot 指标 */
 .spotGrid {
   display: grid;
@@ -271,9 +302,17 @@
     width: 100%;
     margin-top: var(--spacing-sm);
   }
+
+  .flowSummary {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
 }
 
 @media (max-width: 768px) {
+  .flowSummary {
+    grid-template-columns: 1fr;
+  }
+
   .tableHeader,
   .tableRow {
     grid-template-columns: 40px 1fr 70px 70px;
