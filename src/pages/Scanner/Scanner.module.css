@@ -3,27 +3,35 @@
 .scanner {
   display: flex;
   flex-direction: column;
-  gap: var(--spacing-xl);
+  gap: var(--spacing-2xl);
 }
 
 .header {
   display: flex;
   flex-direction: column;
-  gap: var(--spacing-xs);
+  gap: var(--spacing-sm);
+  padding: var(--spacing-xl);
+  background:
+    linear-gradient(135deg, rgba(105, 178, 255, 0.14), transparent 42%),
+    linear-gradient(180deg, rgba(255, 255, 255, 0.04), transparent 100%);
+  border: 1px solid var(--border-primary);
+  border-radius: var(--radius-xl);
+  box-shadow: var(--shadow-sm);
 }
 
 .title {
   display: flex;
   align-items: center;
   gap: var(--spacing-sm);
-  font-size: var(--font-size-xl);
-  font-weight: 600;
+  font-size: 22px;
+  font-weight: 700;
   color: var(--text-primary);
 }
 
 .subtitle {
   font-size: var(--font-size-sm);
-  color: var(--text-tertiary);
+  color: var(--text-secondary);
+  max-width: 680px;
 }
 
 .content {
@@ -62,9 +70,10 @@
   padding: var(--spacing-sm) var(--spacing-md);
   font-size: var(--font-size-sm);
   color: var(--text-primary);
-  background: var(--bg-tertiary);
+  background: rgba(255, 255, 255, 0.04);
   border: 1px solid var(--border-primary);
-  border-radius: var(--radius-md);
+  border-radius: 12px;
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.03);
 }
 
 .select {
@@ -86,18 +95,21 @@
   padding: 6px 12px;
   font-size: var(--font-size-xs);
   color: var(--text-secondary);
-  background: var(--bg-tertiary);
-  border-radius: var(--radius-sm);
+  background: rgba(255, 255, 255, 0.04);
+  border: 1px solid var(--border-secondary);
+  border-radius: 999px;
   transition: all var(--transition-fast);
 }
 
 .topNButton:hover {
   color: var(--text-primary);
-  background: var(--border-primary);
+  border-color: var(--border-strong);
+  background: rgba(255, 255, 255, 0.08);
 }
 
 .topNButton.active {
   color: var(--color-accent);
+  border-color: rgba(105, 178, 255, 0.24);
   background: var(--color-accent-bg);
 }
 
@@ -117,22 +129,28 @@
 .signalCard {
   display: flex;
   flex-direction: column;
-  gap: 2px;
+  gap: 6px;
   padding: var(--spacing-md);
-  background: var(--bg-tertiary);
+  background:
+    linear-gradient(180deg, rgba(255, 255, 255, 0.04), transparent 100%),
+    rgba(255, 255, 255, 0.03);
   border: 1px solid var(--border-primary);
-  border-radius: var(--radius-md);
+  border-radius: 16px;
   text-align: left;
   transition: all var(--transition-fast);
 }
 
 .signalCard:hover {
-  border-color: var(--border-focus);
+  border-color: var(--border-strong);
+  transform: translateY(-2px);
 }
 
 .signalCard.active {
   border-color: var(--color-accent);
-  background: var(--color-accent-bg);
+  background:
+    linear-gradient(180deg, rgba(255, 255, 255, 0.05), transparent 100%),
+    var(--color-accent-bg);
+  box-shadow: 0 16px 34px rgba(16, 59, 116, 0.18);
 }
 
 .signalLabel {
@@ -176,9 +194,10 @@
 }
 
 .resultItem:hover {
-  background: var(--bg-tertiary);
-  margin: 0 calc(-1 * var(--spacing-lg));
-  padding: var(--spacing-md) var(--spacing-lg);
+  background: rgba(255, 255, 255, 0.04);
+  margin: 0 calc(-1 * var(--spacing-sm));
+  padding: var(--spacing-md) var(--spacing-sm);
+  border-radius: var(--radius-md);
 }
 
 .resultInfo {

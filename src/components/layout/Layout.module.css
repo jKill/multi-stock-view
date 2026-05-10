@@ -2,7 +2,7 @@
 
 .layout {
   min-height: 100vh;
-  background: var(--bg-primary);
+  background: transparent;
 }
 
 .main {
@@ -13,9 +13,25 @@
 }
 
 .content {
+  position: relative;
+  isolation: isolate;
   padding: var(--spacing-xl);
   max-width: var(--content-max-width);
   margin: 0 auto;
+}
+
+.content::before {
+  content: '';
+  position: fixed;
+  top: 84px;
+  right: 8%;
+  width: 320px;
+  height: 320px;
+  border-radius: 999px;
+  background: radial-gradient(circle, rgba(105, 178, 255, 0.12), transparent 70%);
+  pointer-events: none;
+  filter: blur(24px);
+  z-index: -1;
 }
 
 /* 底部声明 */
@@ -29,6 +45,7 @@
   color: var(--text-muted);
   border-top: 1px solid var(--border-secondary);
   margin-top: var(--spacing-xl);
+  background: linear-gradient(180deg, transparent, rgba(255, 255, 255, 0.03));
 }
 
 .footer a {
@@ -55,6 +72,10 @@
 
   .content {
     padding: var(--spacing-md);
+  }
+
+  .content::before {
+    display: none;
   }
 
   .footer {

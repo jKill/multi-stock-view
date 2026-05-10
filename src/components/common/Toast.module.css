@@ -44,11 +44,11 @@
 }
 
 .toast.info {
-  border-color: var(--color-primary);
+  border-color: var(--color-accent);
 }
 
 .toast.info .icon {
-  color: var(--color-primary);
+  color: var(--color-accent);
 }
 
 .toast.warning {
@@ -93,6 +93,6 @@
 }
 
 .closeBtn:hover {
-  background: var(--bg-hover);
+  background: rgba(255, 255, 255, 0.06);
   color: var(--text-primary);
 }

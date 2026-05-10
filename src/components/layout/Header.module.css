@@ -6,13 +6,15 @@
   left: var(--sidebar-width);
   right: 0;
   height: var(--header-height);
-  background: var(--bg-secondary);
+  background: linear-gradient(180deg, var(--bg-overlay), rgba(8, 17, 31, 0.7));
   border-bottom: 1px solid var(--border-primary);
   display: flex;
   align-items: center;
   justify-content: space-between;
   padding: 0 var(--spacing-xl);
   z-index: 90;
+  backdrop-filter: blur(20px);
+  box-shadow: 0 10px 24px rgba(3, 8, 18, 0.14);
 }
 
 .searchContainer {
@@ -37,12 +39,16 @@
   width: 100%;
   height: 36px;
   padding: 0 var(--spacing-xl) 0 calc(var(--spacing-md) + 20px);
-  background: var(--bg-tertiary);
-  border: 1px solid transparent;
-  border-radius: var(--radius-md);
+  background: rgba(255, 255, 255, 0.05);
+  border: 1px solid var(--border-secondary);
+  border-radius: 999px;
   color: var(--text-primary);
   font-size: var(--font-size-sm);
-  transition: all var(--transition-fast);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.03);
+  transition:
+    border-color var(--transition-fast),
+    background var(--transition-fast),
+    box-shadow var(--transition-fast);
 }
 
 .searchInput::placeholder {
@@ -50,8 +56,11 @@
 }
 
 .searchInput:focus {
-  background: var(--bg-primary);
+  background: rgba(255, 255, 255, 0.08);
   border-color: var(--border-focus);
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.04),
+    0 0 0 4px rgba(105, 178, 255, 0.12);
 }
 
 .clearBtn {
@@ -89,12 +98,13 @@
   top: calc(100% + var(--spacing-xs));
   left: 0;
   right: 0;
-  background: var(--bg-elevated);
+  background: linear-gradient(180deg, var(--bg-glass), var(--bg-elevated));
   border: 1px solid var(--border-primary);
   border-radius: var(--radius-lg);
   box-shadow: var(--shadow-lg);
   max-height: 400px;
   overflow-y: auto;
+  backdrop-filter: blur(20px);
 }
 
 .resultList,
@@ -141,7 +151,7 @@
 
 .resultItem:hover,
 .resultItem.active {
-  background: var(--bg-tertiary);
+  background: rgba(255, 255, 255, 0.05);
 }
 
 .resultItem.unsupported {
@@ -195,15 +205,17 @@
   justify-content: center;
   width: 36px;
   height: 36px;
-  border-radius: var(--radius-md);
+  border-radius: 999px;
   color: var(--text-secondary);
-  background: var(--bg-tertiary);
+  background: rgba(255, 255, 255, 0.05);
+  border: 1px solid var(--border-secondary);
   transition: all var(--transition-fast);
 }
 
 .themeBtn:hover {
   color: var(--text-primary);
-  background: var(--border-primary);
+  border-color: var(--border-strong);
+  background: rgba(255, 255, 255, 0.08);
 }
 
 /* GitHub 链接 */
@@ -213,15 +225,17 @@
   justify-content: center;
   width: 36px;
   height: 36px;
-  border-radius: var(--radius-md);
+  border-radius: 999px;
   color: var(--text-secondary);
-  background: var(--bg-tertiary);
+  background: rgba(255, 255, 255, 0.05);
+  border: 1px solid var(--border-secondary);
   transition: all var(--transition-fast);
 }
 
 .githubLink:hover {
   color: var(--text-primary);
-  background: var(--border-primary);
+  border-color: var(--border-strong);
+  background: rgba(255, 255, 255, 0.08);
 }
 
 /* Stock SDK 链接 */
@@ -231,15 +245,17 @@
   justify-content: center;
   width: 36px;
   height: 36px;
-  border-radius: var(--radius-md);
+  border-radius: 999px;
   color: var(--text-secondary);
-  background: var(--bg-tertiary);
+  background: rgba(255, 255, 255, 0.05);
+  border: 1px solid var(--border-secondary);
   transition: all var(--transition-fast);
 }
 
 .sdkLink:hover {
   color: var(--color-accent);
-  background: var(--border-primary);
+  border-color: rgba(105, 178, 255, 0.24);
+  background: rgba(105, 178, 255, 0.08);
 }
 
 /* 快速加自选按钮 */
@@ -259,11 +275,11 @@
 
 .quickAddBtn:hover {
   background: var(--bg-tertiary);
-  color: var(--color-primary);
+  color: var(--color-accent);
 }
 
 .quickAddBtn.added {
-  color: var(--color-primary);
+  color: var(--color-accent);
 }
 
 /* 响应式 */

@@ -3,9 +3,11 @@
 .tabs {
   display: flex;
   gap: var(--spacing-xs);
-  background: var(--bg-tertiary);
+  background: rgba(255, 255, 255, 0.04);
   padding: var(--spacing-xs);
-  border-radius: var(--radius-md);
+  border: 1px solid var(--border-secondary);
+  border-radius: 999px;
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.04);
 }
 
 .sm {
@@ -29,13 +31,17 @@
   display: flex;
   align-items: center;
   gap: var(--spacing-xs);
+  justify-content: center;
   color: var(--text-secondary);
-  border-radius: var(--radius-sm);
-  transition: color var(--transition-fast);
+  border-radius: 999px;
+  transition:
+    color var(--transition-fast),
+    transform var(--transition-fast);
 }
 
 .tab:hover {
   color: var(--text-primary);
+  transform: translateY(-1px);
 }
 
 .tab.active {
@@ -45,8 +51,11 @@
 .indicator {
   position: absolute;
   inset: 0;
-  background: var(--bg-secondary);
-  border-radius: var(--radius-sm);
+  background:
+    linear-gradient(180deg, rgba(255, 255, 255, 0.08), transparent 120%),
+    linear-gradient(135deg, rgba(105, 178, 255, 0.26), rgba(105, 178, 255, 0.1));
+  border: 1px solid rgba(105, 178, 255, 0.2);
+  border-radius: 999px;
   z-index: -1;
   box-shadow: var(--shadow-sm);
 }
