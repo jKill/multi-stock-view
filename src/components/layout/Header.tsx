@@ -32,25 +32,9 @@ import { useToast } from '@/components/common';
 import { useTheme } from '@/hooks';
 import type { SearchHistoryItem } from '@/types';
 import type { AppSearchResult } from '@/services/sdk';
-import { normalizeStockCode } from '@/utils/format';
 import styles from './Header.module.css';
 
-function getHistoryRoute(item: SearchHistoryItem): string | null {
-  if (item.type === '行业板块') {
-    return `/boards/industry/${item.code}`;
-  }
-  if (item.type === '概念板块') {
-    return `/boards/concept/${item.code}`;
-  }
-
-  const normalizedCode = normalizeStockCode(item.code);
-  if (
-    ['sh', 'sz', 'bj'].includes(item.market.toLowerCase()) &&
-    /^(sh|sz|bj)\d{6}$/i.test(normalizedCode)
-  ) {
-    return `/s/${normalizedCode}`;
-  }
-
+function getHistoryRoute(_item: SearchHistoryItem): string | null {
   return null;
 }
 
@@ -148,6 +132,11 @@ export function Header() {
   const handleSelect = (item: AppSearchResult) => {
     if (!item.isSupported || !item.route) {
       toast.info(`${item.name} 暂未接入当前看板详情页`);
+      return;
+    }
+
+    if (item.route.startsWith('/s/') || item.route.startsWith('/boards/')) {
+      toast.info(`${item.name} 详情页已移除`);
       return;
     }
 
