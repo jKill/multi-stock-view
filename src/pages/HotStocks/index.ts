@@ -1,0 +1,1 @@
+export { HotStocks } from './HotStocks';

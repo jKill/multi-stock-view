@@ -9,6 +9,7 @@ import { Dashboard } from '@/pages/Dashboard';
 import { Loading } from '@/components/common';
 
 const Heatmap = lazy(() => import('@/pages/Heatmap').then((mod) => ({ default: mod.Heatmap })));
+const HotStocks = lazy(() => import('@/pages/HotStocks').then((mod) => ({ default: mod.HotStocks })));
 
 function withSuspense(element: ReactNode) {
   return (
@@ -31,6 +32,10 @@ const router = createBrowserRouter(
         {
           path: 'heatmap',
           element: withSuspense(<Heatmap />),
+        },
+        {
+          path: 'hot-stocks',
+          element: withSuspense(<HotStocks />),
         },
       ],
     },

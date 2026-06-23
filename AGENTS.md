@@ -19,7 +19,7 @@ src/
 │   ├── layout/
 │   │   ├── Layout.tsx          # 页面框架（Sidebar + Header + <Outlet/> + footer）
 │   │   ├── Header.tsx          # 顶部搜索栏 + 主题切换 + GitHub/SDK 链接
-│   │   └── Sidebar.tsx         # 左侧导航（仅：总览、热力图）
+│   │   └── Sidebar.tsx         # 左侧导航（总览、热力图、热门股）
 │   ├── common/                 # 通用组件 (Button, Card, Tabs, Loading, Empty, Logo, Toast)
 │   └── charts/
 │       └── LazyEChart.tsx      # 懒加载 ECharts 包装器
@@ -30,7 +30,8 @@ src/
 ├── hooks/                      # 自定义 hooks (usePolling, useLocalStorage, useTheme)
 ├── pages/
 │   ├── Dashboard/              # 总览（指数卡片、涨跌统计、自选快照、市场榜单、板块列表、资金流）
-│   └── Heatmap/                # 股票热力图
+│   ├── Heatmap/                # 股票热力图
+│   └── HotStocks/              # 热门股（成交量 Top10 + K线 + 板块 + 成交额，同步切换周期）
 ├── router/
 │   └── index.tsx               # 路由配置（仅 / 和 /heatmap）
 ├── services/
@@ -48,6 +49,7 @@ src/
 |------|------|------|
 | `/` | Dashboard | 总览，直接渲染（非懒加载） |
 | `/heatmap` | Heatmap | 热力图，懒加载 |
+| `/hot-stocks` | HotStocks | 热门股（成交量 Top10），懒加载 |
 
 ## CSS 变量
 - `--sidebar-width: 220px`

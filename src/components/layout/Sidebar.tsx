@@ -7,6 +7,7 @@ import { motion } from 'framer-motion';
 import {
   LayoutDashboard,
   Grid3X3,
+  TrendingUp,
 } from 'lucide-react';
 import { Logo } from '@/components/common';
 import styles from './Sidebar.module.css';
@@ -20,6 +21,7 @@ interface NavItem {
 const navItems: NavItem[] = [
   { path: '/', label: '总览', icon: <LayoutDashboard size={18} /> },
   { path: '/heatmap', label: '热力图', icon: <Grid3X3 size={18} /> },
+  { path: '/hot-stocks', label: '热门股', icon: <TrendingUp size={18} /> },
 ];
 
 export function Sidebar() {

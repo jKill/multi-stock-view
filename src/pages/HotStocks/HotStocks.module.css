@@ -1,0 +1,238 @@
+/* 热门股页面样式 */
+
+.page {
+  display: flex;
+  flex-direction: column;
+  gap: var(--spacing-lg);
+}
+
+/* 控制栏 */
+.controls {
+  display: flex;
+  align-items: center;
+  gap: var(--spacing-md);
+  padding: var(--spacing-sm) var(--spacing-md);
+  background: var(--bg-secondary);
+  border: 1px solid var(--border-secondary);
+  border-radius: var(--radius-md);
+  flex-wrap: wrap;
+}
+
+.controlLeft {
+  display: flex;
+  align-items: center;
+  gap: var(--spacing-sm);
+  min-width: 0;
+}
+
+.controlIcon {
+  color: var(--color-accent);
+  flex-shrink: 0;
+}
+
+.controlTitle {
+  font-size: var(--font-size-md);
+  font-weight: 600;
+  color: var(--text-primary);
+  white-space: nowrap;
+}
+
+.controlDesc {
+  font-size: var(--font-size-xs);
+  color: var(--text-tertiary);
+  white-space: nowrap;
+}
+
+.controlCenter {
+  flex: 1;
+  display: flex;
+  justify-content: center;
+}
+
+.controlRight {
+  display: flex;
+  align-items: center;
+  gap: var(--spacing-xs);
+  color: var(--text-tertiary);
+  flex-shrink: 0;
+}
+
+/* 周期切换按钮组 */
+.periodGroup {
+  display: flex;
+  background: var(--bg-tertiary);
+  border-radius: var(--radius-sm);
+  padding: 2px;
+  gap: 1px;
+}
+
+.periodBtn {
+  padding: 4px 12px;
+  border: none;
+  background: transparent;
+  color: var(--text-secondary);
+  font-size: var(--font-size-sm);
+  font-family: var(--font-sans);
+  cursor: pointer;
+  border-radius: 4px;
+  transition: all var(--transition-fast);
+  white-space: nowrap;
+}
+
+.periodBtn:hover {
+  color: var(--text-primary);
+  background: rgba(255, 255, 255, 0.05);
+}
+
+.periodActive {
+  background: var(--color-accent);
+  color: #fff;
+}
+
+.periodActive:hover {
+  background: var(--color-accent-hover);
+  color: #fff;
+}
+
+/* 日期选择器 */
+.dateInput {
+  padding: 4px 8px;
+  background: var(--bg-tertiary);
+  border: 1px solid var(--border-primary);
+  border-radius: var(--radius-sm);
+  color: var(--text-primary);
+  font-size: var(--font-size-sm);
+  font-family: var(--font-mono);
+  outline: none;
+  cursor: pointer;
+}
+
+.dateInput:focus {
+  border-color: var(--border-focus);
+}
+
+.dateInput::-webkit-calendar-picker-indicator {
+  filter: invert(0.7);
+  cursor: pointer;
+}
+
+/* 加载条 */
+.klineLoading {
+  display: flex;
+  justify-content: center;
+  padding: var(--spacing-sm);
+}
+
+/* 网格布局 */
+.grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(380px, 1fr));
+  gap: var(--spacing-md);
+}
+
+/* 个股卡片 */
+.card {
+  background: var(--bg-secondary);
+  border: 1px solid var(--border-secondary);
+  border-radius: var(--radius-md);
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+  transition: border-color var(--transition-normal);
+}
+
+.card:hover {
+  border-color: var(--border-primary);
+}
+
+/* 卡片头部 */
+.cardHeader {
+  display: flex;
+  flex-direction: column;
+  gap: var(--spacing-xs);
+  padding: var(--spacing-md);
+  border-bottom: 1px solid var(--border-secondary);
+}
+
+.stockMain {
+  display: flex;
+  align-items: center;
+  gap: var(--spacing-sm);
+  min-width: 0;
+}
+
+.rank {
+  font-size: var(--font-size-xs);
+  color: var(--text-muted);
+  font-family: var(--font-mono);
+  flex-shrink: 0;
+}
+
+.stockName {
+  font-size: var(--font-size-md);
+  font-weight: 600;
+  color: var(--text-primary);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.stockCode {
+  font-size: var(--font-size-xs);
+  color: var(--text-tertiary);
+  font-family: var(--font-mono);
+  flex-shrink: 0;
+}
+
+.stockPrice {
+  display: flex;
+  align-items: baseline;
+  gap: var(--spacing-sm);
+}
+
+.price {
+  font-size: var(--font-size-lg);
+  font-weight: 700;
+  font-family: var(--font-mono);
+}
+
+.change {
+  font-size: var(--font-size-sm);
+  font-family: var(--font-mono);
+}
+
+.stockAmount {
+  font-size: var(--font-size-xs);
+  color: var(--text-tertiary);
+}
+
+/* 图表区域 */
+.chartWrap {
+  height: 220px;
+  padding: var(--spacing-xs);
+}
+
+/* 板块标签 */
+.sectors {
+  display: flex;
+  gap: var(--spacing-xs);
+  padding: 0 var(--spacing-md) var(--spacing-md);
+  flex-wrap: wrap;
+}
+
+.sectorTag {
+  font-size: 10px;
+  padding: 2px 8px;
+  border-radius: 10px;
+  white-space: nowrap;
+}
+
+.sectorIndustry {
+  background: rgba(105, 178, 255, 0.12);
+  color: var(--color-accent);
+}
+
+.sectorConcept {
+  background: rgba(245, 158, 11, 0.12);
+  color: #f59e0b;
+}
