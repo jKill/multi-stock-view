@@ -8,6 +8,8 @@ import {
   LayoutDashboard,
   Grid3X3,
   TrendingUp,
+  Star,
+  Settings,
 } from 'lucide-react';
 import { Logo } from '@/components/common';
 import styles from './Sidebar.module.css';
@@ -22,6 +24,11 @@ const navItems: NavItem[] = [
   { path: '/', label: '总览', icon: <LayoutDashboard size={18} /> },
   { path: '/heatmap', label: '热力图', icon: <Grid3X3 size={18} /> },
   { path: '/hot-stocks', label: '热门股', icon: <TrendingUp size={18} /> },
+  { path: '/watchlist', label: '自选', icon: <Star size={18} /> },
+];
+
+const bottomItems: NavItem[] = [
+  { path: '/settings', label: '设置', icon: <Settings size={18} /> },
 ];
 
 export function Sidebar() {
@@ -62,6 +69,10 @@ export function Sidebar() {
       <nav className={styles.nav}>
         <div className={styles.navGroup}>
           {navItems.map(renderNavItem)}
+        </div>
+
+        <div className={styles.navGroup}>
+          {bottomItems.map(renderNavItem)}
         </div>
       </nav>
     </aside>

@@ -12,12 +12,14 @@ import {
   getAllAShareQuotes,
   getHistoryKline,
   getTodayTimeline,
+  getMinuteKline,
 } from '@/services/sdk';
 import {
   formatPrice,
   formatPercent,
   formatAmount,
   getChangeColorClass,
+  normalizeStockCode as normalizeCode,
 } from '@/utils/format';
 import { LazyEChart } from '@/components/charts/LazyEChart';
 import type { FullQuote, HistoryKline, TodayTimeline, IndustryBoard } from 'stock-sdk';
@@ -42,6 +44,10 @@ function formatDateStr(date: Date): string {
   const m = String(date.getMonth() + 1).padStart(2, '0');
   const d = String(date.getDate()).padStart(2, '0');
   return `${y}-${m}-${d}`;
+}
+
+function toApiDate(dateStr: string): string {
+  return dateStr.replace(/-/g, '');
 }
 
 function todayStr(): string {
@@ -299,24 +305,46 @@ function buildTimelineOption(
   };
 }
 
+interface MinuteKlineItem {
+  time: string;
+  close: number;
+  avgPrice: number;
+  volume: number;
+}
+
+function minuteToTimeline(items: MinuteKlineItem[]): TodayTimeline[] {
+  return items.map((item) => {
+    const time = item.time.length > 5 ? item.time.slice(-5) : item.time;
+    return {
+      time,
+      timestamp: 0,
+      tz: '',
+      price: item.close,
+      volume: item.volume,
+      avgPrice: item.avgPrice,
+    };
+  });
+}
+
 function findStockSectors(
   stockName: string,
   industryList: IndustryBoard[],
   conceptList: IndustryBoard[],
 ): StockSector[] {
+  const normalize = (s: string) => s.replace(/\s+/g, '').replace(/\*ST/g, 'ST');
+  const target = normalize(stockName);
   const sectors: StockSector[] = [];
 
-  for (const board of industryList) {
-    if (board.leadingStock === stockName) {
-      sectors.push({ name: board.name, type: 'industry', changePercent: board.changePercent });
+  const match = (board: IndustryBoard, type: 'industry' | 'concept') => {
+    if (!board.leadingStock) return;
+    const leader = normalize(board.leadingStock);
+    if (leader === target || leader.includes(target) || target.includes(leader)) {
+      sectors.push({ name: board.name, type, changePercent: board.changePercent });
     }
-  }
+  };
 
-  for (const board of conceptList) {
-    if (board.leadingStock === stockName) {
-      sectors.push({ name: board.name, type: 'concept', changePercent: board.changePercent });
-    }
-  }
+  for (const board of industryList) match(board, 'industry');
+  for (const board of conceptList) match(board, 'concept');
 
   sectors.sort((a, b) => (b.changePercent ?? -Infinity) - (a.changePercent ?? -Infinity));
   return sectors.slice(0, 3);
@@ -365,36 +393,56 @@ export function HotStocks() {
 
     try {
       if (currentPeriod === 'timeline') {
-        const timelineResults = await Promise.allSettled(
-          stocks.map(async (stock) => {
-            const response = await getTodayTimeline(stock.code);
-            return { code: stock.code, data: response.data, prevClose: response.preClose ?? stock.prevClose };
-          })
-        );
-        for (const result of timelineResults) {
-          if (result.status === 'fulfilled') {
-            newTimelines[result.value.code] = {
-              data: result.value.data,
-              prevClose: result.value.prevClose,
-            };
+        const isToday = date === todayStr();
+        if (isToday) {
+          const timelineResults = await Promise.allSettled(
+            stocks.map(async (stock) => {
+              const response = await getTodayTimeline(normalizeCode(stock.code));
+              return { code: stock.code, data: response.data, prevClose: response.preClose ?? stock.prevClose };
+            })
+          );
+          for (const result of timelineResults) {
+            if (result.status === 'fulfilled') {
+              newTimelines[result.value.code] = {
+                data: result.value.data,
+                prevClose: result.value.prevClose,
+              };
+            }
+          }
+        } else {
+          const minuteResults = await Promise.allSettled(
+            stocks.map(async (stock) => {
+              const data = await getMinuteKline(normalizeCode(stock.code), {
+                startDate: date,
+                endDate: date,
+              });
+              return { code: stock.code, data, prevClose: stock.prevClose };
+            })
+          );
+          for (const result of minuteResults) {
+            if (result.status === 'fulfilled' && result.value.data.length > 0) {
+              newTimelines[result.value.code] = {
+                data: minuteToTimeline(result.value.data),
+                prevClose: result.value.prevClose,
+              };
+            }
           }
         }
       } else {
         const apiPeriod = currentPeriod === '5day' ? 'daily' : currentPeriod;
-        const klineResults = await Promise.allSettled(
-          stocks.map(async (stock) => {
-            const data = await getHistoryKline(stock.code, {
+        const endDate = toApiDate(date);
+        // 逐只获取，避免并发触发 SDK 频率限制
+        for (const stock of stocks) {
+          try {
+            const data = await getHistoryKline(normalizeCode(stock.code), {
               period: apiPeriod,
-              endDate: date,
+              adjust: 'qfq',
+              endDate,
             });
-            return { code: stock.code, data };
-          })
-        );
-        for (const result of klineResults) {
-          if (result.status === 'fulfilled') {
-            const rawData = result.value.data;
-            const sliced = currentPeriod === '5day' ? rawData.slice(-5) : rawData;
-            newKlines[result.value.code] = sliced;
+            const sliced = currentPeriod === '5day' ? data.slice(-5) : data;
+            newKlines[stock.code] = sliced;
+          } catch (err) {
+            console.warn(`Kline fetch failed for ${stock.code}:`, err);
           }
         }
       }
@@ -508,7 +556,7 @@ export function HotStocks() {
             animate={{ opacity: 1, y: 0 }}
             transition={{ delay: index * 0.04 }}
           >
-            <div className={styles.cardHeader}>
+            <div className={styles.cardUpper}>
               <div className={styles.stockMain}>
                 <span className={styles.rank}>#{index + 1}</span>
                 <span className={styles.stockName}>{stock.name}</span>
@@ -525,38 +573,43 @@ export function HotStocks() {
               <div className={styles.stockAmount}>
                 成交额 {formatAmount(stock.amount)}
               </div>
+              {sectors[stock.code]?.length > 0 && (
+                <div className={styles.sectors}>
+                  {sectors[stock.code].map((s, si) => (
+                    <span
+                      key={`${s.name}-${si}`}
+                      className={`${styles.sectorTag} ${
+                        s.type === 'concept' ? styles.sectorConcept : styles.sectorIndustry
+                      }`}
+                    >
+                      {s.name}
+                    </span>
+                  ))}
+                </div>
+              )}
             </div>
 
             <div className={styles.chartWrap}>
-              <LazyEChart
-                option={
-                  period === 'timeline'
-                    ? buildTimelineOption(
-                        timelineData[stock.code]?.data ?? [],
-                        timelineData[stock.code]?.prevClose ?? stock.prevClose,
-                        stock.name,
-                      )
-                    : buildCandlestickOption(klineData[stock.code] ?? [], stock.name)
-                }
-                style={{ height: '100%', width: '100%' }}
-                notMerge
-              />
+              {period === 'timeline' && timelineData[stock.code]?.data?.length ? (
+                <LazyEChart
+                  option={buildTimelineOption(
+                    timelineData[stock.code]!.data,
+                    timelineData[stock.code]!.prevClose,
+                    stock.name,
+                  )}
+                  style={{ height: '100%', width: '100%' }}
+                  notMerge
+                />
+              ) : klineData[stock.code]?.length ? (
+                <LazyEChart
+                  option={buildCandlestickOption(klineData[stock.code], stock.name)}
+                  style={{ height: '100%', width: '100%' }}
+                  notMerge
+                />
+              ) : (
+                <div className={styles.noData}>暂无K线数据</div>
+              )}
             </div>
-
-            {sectors[stock.code]?.length > 0 && (
-              <div className={styles.sectors}>
-                {sectors[stock.code].map((s, si) => (
-                  <span
-                    key={`${s.name}-${si}`}
-                    className={`${styles.sectorTag} ${
-                      s.type === 'concept' ? styles.sectorConcept : styles.sectorIndustry
-                    }`}
-                  >
-                    {s.name}
-                  </span>
-                ))}
-              </div>
-            )}
           </motion.div>
         ))}
       </div>

@@ -19,7 +19,7 @@ src/
 │   ├── layout/
 │   │   ├── Layout.tsx          # 页面框架（Sidebar + Header + <Outlet/> + footer）
 │   │   ├── Header.tsx          # 顶部搜索栏 + 主题切换 + GitHub/SDK 链接
-│   │   └── Sidebar.tsx         # 左侧导航（总览、热力图、热门股）
+│   │   └── Sidebar.tsx         # 左侧导航（总览/热力图/热门股/自选 + 底部设置；榜单/板块/扫描/尾盘选股已隐藏入口，路由仍可用）
 │   ├── common/                 # 通用组件 (Button, Card, Tabs, Loading, Empty, Logo, Toast)
 │   └── charts/
 │       └── LazyEChart.tsx      # 懒加载 ECharts 包装器
@@ -31,9 +31,16 @@ src/
 ├── pages/
 │   ├── Dashboard/              # 总览（指数卡片、涨跌统计、自选快照、市场榜单、板块列表、资金流）
 │   ├── Heatmap/                # 股票热力图
-│   └── HotStocks/              # 热门股（成交量 Top10 + K线 + 板块 + 成交额，同步切换周期）
+│   ├── HotStocks/              # 热门股（成交量 Top10 + K线 + 板块 + 成交额，同步切换周期）
+│   ├── Watchlist/              # 自选股管理
+│   ├── Settings/               # 设置（刷新间隔、颜色模式等）
+│   ├── Rankings/               # 榜单（涨幅榜、跌幅榜等，侧边栏已隐藏）
+│   ├── Boards/                 # 板块列表 + 板块详情（侧边栏已隐藏）
+│   ├── Scanner/                # 扫描（侧边栏已隐藏）
+│   ├── EndOfDayPicker/         # 尾盘选股（侧边栏已隐藏）
+│   └── StockDetail/            # 个股详情 /s/:code（隐藏路由，通过搜索/点击进入）
 ├── router/
-│   └── index.tsx               # 路由配置（仅 / 和 /heatmap）
+│   └── index.tsx               # 路由配置
 ├── services/
 │   ├── sdk.ts                  # stock-sdk 封装（行情、搜索、资金流等 API）
 │   ├── storage.ts              # localStorage（自选、搜索历史、设置）
@@ -50,6 +57,14 @@ src/
 | `/` | Dashboard | 总览，直接渲染（非懒加载） |
 | `/heatmap` | Heatmap | 热力图，懒加载 |
 | `/hot-stocks` | HotStocks | 热门股（成交量 Top10），懒加载 |
+| `/watchlist` | Watchlist | 自选股管理，懒加载 |
+| `/settings` | Settings | 设置，懒加载 |
+| `/rankings` | Rankings | 榜单（侧边栏已隐藏），懒加载 |
+| `/boards` | Boards | 板块列表（侧边栏已隐藏），懒加载 |
+| `/boards/:type/:code` | BoardDetail | 板块详情（侧边栏已隐藏），懒加载 |
+| `/s/:code` | StockDetail | 个股详情（隐藏路由），懒加载 |
+| `/scanner` | Scanner | 扫描（侧边栏已隐藏），懒加载 |
+| `/eod-picker` | EndOfDayPicker | 尾盘选股（侧边栏已隐藏），懒加载 |
 
 ## CSS 变量
 - `--sidebar-width: 220px`

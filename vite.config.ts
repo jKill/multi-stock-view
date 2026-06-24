@@ -38,6 +38,13 @@ export default defineConfig(({ mode }) => {
     resolve: {
       alias: {
         '@': path.resolve(__dirname, './src'),
+
+      },
+    },
+    server: {
+      watch: {
+        usePolling: true,
+        interval: 1000,
       },
     },
     // 生产环境生成 source map

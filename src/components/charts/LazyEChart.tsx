@@ -1,14 +1,5 @@
-import { lazy, Suspense } from 'react';
-import { Loading } from '@/components/common';
+import ReactECharts from 'echarts-for-react';
 
-const ReactECharts = lazy(() => import('echarts-for-react'));
-
-type ReactEChartsProps = React.ComponentProps<typeof ReactECharts>;
-
-export function LazyEChart(props: ReactEChartsProps) {
-  return (
-    <Suspense fallback={<Loading size="md" />}>
-      <ReactECharts {...props} />
-    </Suspense>
-  );
+export function LazyEChart(props: React.ComponentProps<typeof ReactECharts>) {
+  return <ReactECharts {...props} />;
 }

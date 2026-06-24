@@ -3,8 +3,10 @@
  */
 
 import { useState, useCallback, useEffect, useMemo } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { motion } from 'framer-motion';
-import { Card, Tabs, Loading, Empty } from '@/components/common';
+import { Plus } from 'lucide-react';
+import { Card, Tabs, Loading, Empty, Button } from '@/components/common';
 import { usePolling } from '@/hooks';
 import { useBoardData, useAppSettings } from '@/contexts';
 import {
@@ -59,6 +61,7 @@ type SectorFundFlowRows = Awaited<ReturnType<typeof getSectorFundFlowRank>>;
 type FundFlowRankRows = Awaited<ReturnType<typeof getFundFlowRank>>;
 
 export function Dashboard() {
+  const navigate = useNavigate();
   const { getRefreshInterval } = useAppSettings();
 
   // 使用共享的板块数据（优化：避免重复请求）
@@ -174,13 +177,13 @@ export function Dashboard() {
   });
 
   // 跳转详情
-  const handleStockClick = (_code: string) => {
-    // detail page removed, no-op
+  const handleStockClick = (code: string) => {
+    navigate(`/s/${code}`);
   };
 
   // 跳转板块
-  const handleBoardClick = (_code: string, _type: 'industry' | 'concept') => {
-    // detail page removed, no-op
+  const handleBoardClick = (code: string, type: 'industry' | 'concept') => {
+    navigate(`/boards/${type}/${code}`);
   };
 
   const currentBoards = boardTab === 'industry' ? industryList : conceptList;
@@ -375,11 +378,26 @@ export function Dashboard() {
           {/* 自选快照 */}
           <Card
             title="自选股"
+            extra={
+              <Button
+                size="sm"
+                variant="ghost"
+                icon={<Plus size={14} />}
+                onClick={() => navigate('/watchlist')}
+              >
+                管理
+              </Button>
+            }
           >
             {watchlistCodes.length === 0 ? (
               <Empty
                 title="暂无自选股"
                 description="搜索添加股票到自选"
+                action={
+                  <Button size="sm" onClick={() => navigate('/watchlist')}>
+                    添加自选
+                  </Button>
+                }
               />
             ) : (
               <div className={styles.watchlist}>
