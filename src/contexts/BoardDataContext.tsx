@@ -44,13 +44,23 @@ export function BoardDataProvider({ children }: BoardDataProviderProps) {
     // (loading 初始值已经是 true)
 
     try {
-      const [industry, concept] = await Promise.all([
+      const [industryResult, conceptResult] = await Promise.allSettled([
         getIndustryList(),
         getConceptList(),
       ]);
-      
-      setIndustryList(industry);
-      setConceptList(concept);
+
+      if (industryResult.status === 'fulfilled') {
+        setIndustryList(industryResult.value);
+      } else {
+        console.warn('[BoardDataContext] 行业板块加载失败:', industryResult.reason);
+      }
+
+      if (conceptResult.status === 'fulfilled') {
+        setConceptList(conceptResult.value);
+      } else {
+        console.warn('[BoardDataContext] 概念板块加载失败:', conceptResult.reason);
+      }
+
       setLastUpdated(Date.now());
     } catch (error) {
       console.error('[BoardDataContext] Fetch error:', error);

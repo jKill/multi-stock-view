@@ -4,7 +4,7 @@
 
 import { useState, useEffect, useCallback, useRef } from 'react';
 import { motion } from 'framer-motion';
-import { TrendingUp, Calendar } from 'lucide-react';
+import { TrendingUp } from 'lucide-react';
 import { Loading } from '@/components/common';
 import { usePolling } from '@/hooks';
 import { useBoardData, useAppSettings } from '@/contexts';
@@ -12,7 +12,6 @@ import {
   getAllAShareQuotes,
   getHistoryKline,
   getTodayTimeline,
-  getMinuteKline,
 } from '@/services/sdk';
 import {
   formatPrice,
@@ -50,10 +49,6 @@ function toApiDate(dateStr: string): string {
   return dateStr.replace(/-/g, '');
 }
 
-function todayStr(): string {
-  return formatDateStr(new Date());
-}
-
 interface StockSector {
   name: string;
   type: 'industry' | 'concept';
@@ -79,6 +74,11 @@ function buildCandlestickOption(
   stockName: string,
 ): unknown {
   if (!klineData.length) return {};
+
+  const DEFAULT_VISIBLE = 60;
+  const startPercent = klineData.length > DEFAULT_VISIBLE
+    ? ((klineData.length - DEFAULT_VISIBLE) / klineData.length) * 100
+    : 0;
 
   const dates = klineData.map((d) => d.date);
   const ohlc = klineData.map((d) => [d.open, d.close, d.low, d.high]);
@@ -154,6 +154,22 @@ function buildCandlestickOption(
         axisTick: { show: false },
         axisLabel: { fontSize: 9, color: '#7286a3' },
         splitLine: { show: false },
+      },
+    ],
+    dataZoom: [
+      {
+        type: 'inside',
+        xAxisIndex: [0, 1],
+        start: startPercent,
+        end: 100,
+      },
+      {
+        type: 'slider',
+        xAxisIndex: [0, 1],
+        start: startPercent,
+        end: 100,
+        height: 18,
+        bottom: 2,
       },
     ],
     series: [
@@ -305,27 +321,6 @@ function buildTimelineOption(
   };
 }
 
-interface MinuteKlineItem {
-  time: string;
-  close: number;
-  avgPrice: number;
-  volume: number;
-}
-
-function minuteToTimeline(items: MinuteKlineItem[]): TodayTimeline[] {
-  return items.map((item) => {
-    const time = item.time.length > 5 ? item.time.slice(-5) : item.time;
-    return {
-      time,
-      timestamp: 0,
-      tz: '',
-      price: item.close,
-      volume: item.volume,
-      avgPrice: item.avgPrice,
-    };
-  });
-}
-
 function findStockSectors(
   stockName: string,
   industryList: IndustryBoard[],
@@ -359,7 +354,6 @@ export function HotStocks() {
   const [timelineData, setTimelineData] = useState<Record<string, { data: TodayTimeline[]; prevClose: number }>>({});
   const [sectors, setSectors] = useState<Record<string, StockSector[]>>({});
   const [period, setPeriod] = useState<KlinePeriod>('daily');
-  const [date, setDate] = useState<string>(todayStr());
   const [initialLoading, setInitialLoading] = useState(true);
   const [klineLoading, setKlineLoading] = useState(false);
 
@@ -391,52 +385,41 @@ export function HotStocks() {
     const newKlines: Record<string, HistoryKline[]> = {};
     const newTimelines: Record<string, { data: TodayTimeline[]; prevClose: number }> = {};
 
+    const now = new Date();
+    const endDate = toApiDate(formatDateStr(now));
+
     try {
       if (currentPeriod === 'timeline') {
-        const isToday = date === todayStr();
-        if (isToday) {
-          const timelineResults = await Promise.allSettled(
-            stocks.map(async (stock) => {
-              const response = await getTodayTimeline(normalizeCode(stock.code));
-              return { code: stock.code, data: response.data, prevClose: response.preClose ?? stock.prevClose };
-            })
-          );
-          for (const result of timelineResults) {
-            if (result.status === 'fulfilled') {
-              newTimelines[result.value.code] = {
-                data: result.value.data,
-                prevClose: result.value.prevClose,
-              };
-            }
-          }
-        } else {
-          const minuteResults = await Promise.allSettled(
-            stocks.map(async (stock) => {
-              const data = await getMinuteKline(normalizeCode(stock.code), {
-                startDate: date,
-                endDate: date,
-              });
-              return { code: stock.code, data, prevClose: stock.prevClose };
-            })
-          );
-          for (const result of minuteResults) {
-            if (result.status === 'fulfilled' && result.value.data.length > 0) {
-              newTimelines[result.value.code] = {
-                data: minuteToTimeline(result.value.data),
-                prevClose: result.value.prevClose,
-              };
-            }
+        const timelineResults = await Promise.allSettled(
+          stocks.map(async (stock) => {
+            const response = await getTodayTimeline(normalizeCode(stock.code));
+            return { code: stock.code, data: response.data, prevClose: response.preClose ?? stock.prevClose };
+          })
+        );
+        for (const result of timelineResults) {
+          if (result.status === 'fulfilled') {
+            newTimelines[result.value.code] = {
+              data: result.value.data,
+              prevClose: result.value.prevClose,
+            };
           }
         }
       } else {
         const apiPeriod = currentPeriod === '5day' ? 'daily' : currentPeriod;
-        const endDate = toApiDate(date);
-        // 逐只获取，避免并发触发 SDK 频率限制
+        const daysBack = apiPeriod === 'monthly'
+          ? 3650
+          : apiPeriod === 'weekly'
+            ? 2555
+            : currentPeriod === '5day'
+              ? 30
+              : 730;
+        const startDate = toApiDate(formatDateStr(new Date(now.getTime() - daysBack * 86400000)));
         for (const stock of stocks) {
           try {
             const data = await getHistoryKline(normalizeCode(stock.code), {
               period: apiPeriod,
               adjust: 'qfq',
+              startDate,
               endDate,
             });
             const sliced = currentPeriod === '5day' ? data.slice(-5) : data;
@@ -457,7 +440,7 @@ export function HotStocks() {
     } finally {
       setKlineLoading(false);
     }
-  }, [date]);
+  }, []);
 
   const computeSectors = useCallback((stocks: FullQuote[]) => {
     const s: Record<string, StockSector[]> = {};
@@ -484,7 +467,7 @@ export function HotStocks() {
     if (!initialLoading && topStocks.length > 0) {
       fetchKlines(topStocks);
     }
-  }, [period, date]);
+  }, [period]);
 
   usePolling(fetchTopStocks, {
     interval: refreshInterval || 0,
@@ -527,17 +510,6 @@ export function HotStocks() {
               </button>
             ))}
           </div>
-        </div>
-
-        <div className={styles.controlRight}>
-          <Calendar size={14} />
-          <input
-            type="date"
-            className={styles.dateInput}
-            value={date}
-            max={todayStr()}
-            onChange={(e) => setDate(e.target.value)}
-          />
         </div>
       </div>
 

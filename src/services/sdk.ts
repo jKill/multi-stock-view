@@ -641,3 +641,60 @@ export async function getTradingCalendar() {
   const key = getCacheKey('getTradingCalendar');
   return withCache(key, 3600000, () => sdk.getTradingCalendar()); // 1 小时缓存
 }
+
+// ========== 历史分钟 K 线（分时图历史日期查询） ==========
+
+export interface HistoricalMinuteItem {
+  time: string;
+  price: number;
+  volume: number;
+  avgPrice: number;
+}
+
+export interface HistoricalMinuteResult {
+  data: HistoricalMinuteItem[];
+  prevClose: number;
+}
+
+/**
+ * 获取历史分钟 K 线，用于分时图查看历史日期。
+ * 复用 SDK 的 getHistoryKline（走 kline/get 接口，有重试 + 缓存），
+ * 以 klt=5 获取 5 分钟粒度数据并转换为分时格式。
+ */
+export async function getHistoricalMinuteKline(
+  symbol: string,
+  startDate: string,
+  endDate: string,
+): Promise<HistoricalMinuteResult> {
+  const key = getCacheKey('getHistoricalMinuteKline', symbol, startDate, endDate);
+  return withCache(key, DEFAULT_TTL.historyKline, async () => {
+    // period 传 '5' 走 5 分钟 K 线；SDK 类型仅声明 daily/weekly/monthly，
+    // 但运行时 B() 对未知值直接透传为 klt 参数
+    const data = await sdk.getHistoryKline(symbol, {
+      period: '5' as 'daily',
+      adjust: 'qfq',
+      startDate,
+      endDate,
+    });
+
+    if (!data.length) return { data: [], prevClose: 0 };
+
+    const items: HistoricalMinuteItem[] = data.map((item) => {
+      const dateStr = item.date;
+      const time = dateStr.length >= 16 ? dateStr.slice(11, 16) : dateStr.slice(-5);
+      const close = item.close ?? 0;
+      const volume = item.volume ?? 0;
+      const amount = item.amount ?? 0;
+      const avgPrice = volume > 0 ? amount / (volume * 100) : close;
+      return { time, price: close, volume, avgPrice };
+    });
+
+    const first = data[0];
+    let prevClose = 0;
+    if (first.close && first.changePercent != null && first.changePercent > -100) {
+      prevClose = Math.round(first.close / (1 + first.changePercent / 100) * 100) / 100;
+    }
+
+    return { data: items, prevClose };
+  });
+}

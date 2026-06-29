@@ -49,14 +49,6 @@
   justify-content: center;
 }
 
-.controlRight {
-  display: flex;
-  align-items: center;
-  gap: var(--spacing-xs);
-  color: var(--text-tertiary);
-  flex-shrink: 0;
-}
-
 /* 周期切换按钮组 */
 .periodGroup {
   display: flex;
@@ -92,28 +84,6 @@
 .periodActive:hover {
   background: var(--color-accent-hover);
   color: #fff;
-}
-
-/* 日期选择器 */
-.dateInput {
-  padding: 4px 8px;
-  background: var(--bg-tertiary);
-  border: 1px solid var(--border-primary);
-  border-radius: var(--radius-sm);
-  color: var(--text-primary);
-  font-size: var(--font-size-sm);
-  font-family: var(--font-mono);
-  outline: none;
-  cursor: pointer;
-}
-
-.dateInput:focus {
-  border-color: var(--border-focus);
-}
-
-.dateInput::-webkit-calendar-picker-indicator {
-  filter: invert(0.7);
-  cursor: pointer;
 }
 
 /* 加载条 */
