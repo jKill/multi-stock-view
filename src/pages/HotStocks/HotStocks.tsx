@@ -96,7 +96,12 @@ function buildCandlestickOption(
 
   const dates = klineData.map((d) => d.date);
   const ohlc = klineData.map((d) => [d.open, d.close, d.low, d.high]);
-  const volumes = klineData.map((d) => d.volume ?? 0);
+  const volumes = klineData.map((d) => ({
+    value: d.volume ?? 0,
+    itemStyle: {
+      color: (d.close ?? 0) >= (d.open ?? 0) ? '#ef4444' : '#22c55e',
+    },
+  }));
   const closes = klineData.map((d) => d.close ?? 0);
 
   const maSeries: unknown[] = MA_PERIODS.map((p) => {
@@ -207,9 +212,6 @@ function buildCandlestickOption(
         data: volumes,
         xAxisIndex: 1,
         yAxisIndex: 1,
-        itemStyle: {
-          color: 'rgba(99,102,241,0.35)',
-        },
       },
     ],
   };
@@ -224,7 +226,12 @@ function buildTimelineOption(
 
   const times = timelineData.map((d) => d.time);
   const prices = timelineData.map((d) => d.price);
-  const volumes = timelineData.map((d) => d.volume);
+  const volumes = timelineData.map((d) => ({
+    value: d.volume,
+    itemStyle: {
+      color: d.price >= prevClose ? '#ef4444' : '#22c55e',
+    },
+  }));
   const avgPrices = timelineData.map((d) => d.avgPrice);
 
   return {
@@ -329,7 +336,6 @@ function buildTimelineOption(
         data: volumes,
         xAxisIndex: 1,
         yAxisIndex: 1,
-        itemStyle: { color: 'rgba(99,102,241,0.3)' },
       },
     ],
   };
@@ -595,7 +601,7 @@ export function HotStocks() {
   const [klineData, setKlineData] = useState<Record<string, HistoryKline[]>>({});
   const [timelineData, setTimelineData] = useState<Record<string, { data: TodayTimeline[]; prevClose: number }>>({});
   const [sectors, setSectors] = useState<Record<string, StockSector[]>>({});
-  const [period, setPeriod] = useState<KlinePeriod>('daily');
+  const [period, setPeriod] = useState<KlinePeriod>('timeline');
   const [initialLoading, setInitialLoading] = useState(true);
   const [klineLoading, setKlineLoading] = useState(false);
   const [sectorLoading, setSectorLoading] = useState(false);
