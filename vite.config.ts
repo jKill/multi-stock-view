@@ -46,6 +46,13 @@ export default defineConfig(({ mode }) => {
         usePolling: true,
         interval: 1000,
       },
+      proxy: {
+        '/api/board': {
+          target: 'https://push2.eastmoney.com',
+          changeOrigin: true,
+          rewrite: (path) => path.replace(/^\/api\/board/, '/api'),
+        },
+      },
     },
     // 生产环境生成 source map
     build: {

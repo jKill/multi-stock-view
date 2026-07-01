@@ -93,10 +93,10 @@
   padding: var(--spacing-sm);
 }
 
-/* 单列布局 */
+/* 三列布局 */
 .grid {
-  display: flex;
-  flex-direction: column;
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
   gap: var(--spacing-md);
 }
 
@@ -118,10 +118,16 @@
 /* 卡片上半部分：信息行 */
 .cardUpper {
   display: flex;
-  align-items: center;
-  gap: var(--spacing-md);
+  flex-direction: column;
+  gap: var(--spacing-xs);
   padding: var(--spacing-sm) var(--spacing-md);
   border-bottom: 1px solid var(--border-secondary);
+}
+
+.cardInfoRow {
+  display: flex;
+  align-items: center;
+  gap: var(--spacing-md);
   flex-wrap: wrap;
 }
 
@@ -197,7 +203,7 @@
 .sectors {
   display: flex;
   gap: var(--spacing-xs);
-  margin-left: auto;
+  justify-content: flex-end;
   flex-wrap: wrap;
 }
 
@@ -216,4 +222,9 @@
 .sectorConcept {
   background: rgba(245, 158, 11, 0.12);
   color: #f59e0b;
+}
+
+.sectorLoading {
+  background: rgba(148, 163, 184, 0.12);
+  color: var(--text-tertiary);
 }

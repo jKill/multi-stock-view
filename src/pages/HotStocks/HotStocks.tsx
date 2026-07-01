@@ -10,7 +10,10 @@ import { usePolling } from '@/hooks';
 import { useBoardData, useAppSettings } from '@/contexts';
 import {
   getAllAShareQuotes,
+  getBoardChanges,
+  getConceptConstituents,
   getHistoryKline,
+  getSectorFundFlowRank,
   getTodayTimeline,
 } from '@/services/sdk';
 import {
@@ -21,7 +24,15 @@ import {
   normalizeStockCode as normalizeCode,
 } from '@/utils/format';
 import { LazyEChart } from '@/components/charts/LazyEChart';
-import type { FullQuote, HistoryKline, TodayTimeline, IndustryBoard } from 'stock-sdk';
+import type {
+  BoardChangeItem,
+  FullQuote,
+  HistoryKline,
+  IndustryBoard,
+  IndustryBoardConstituent,
+  SectorFundFlowItem,
+  TodayTimeline,
+} from 'stock-sdk';
 import styles from './HotStocks.module.css';
 
 type KlinePeriod = 'timeline' | '5day' | 'daily' | 'weekly' | 'monthly';
@@ -37,6 +48,9 @@ const PERIOD_OPTIONS: { key: KlinePeriod; label: string }[] = [
 const TOP_K = 10;
 const MA_PERIODS = [5, 10, 20];
 const MA_COLORS: Record<number, string> = { 5: '#f59e0b', 10: '#3b82f6', 20: '#ec4899' };
+const CONCEPT_CANDIDATE_LIMIT = 180;
+const CONCEPT_FETCH_CONCURRENCY = 6;
+const MIN_CONCEPTS_PER_STOCK = 3;
 
 function formatDateStr(date: Date): string {
   const y = date.getFullYear();
@@ -321,33 +335,261 @@ function buildTimelineOption(
   };
 }
 
-function findStockSectors(
-  stockName: string,
-  industryList: IndustryBoard[],
-  conceptList: IndustryBoard[],
-): StockSector[] {
-  const normalize = (s: string) => s.replace(/\s+/g, '').replace(/\*ST/g, 'ST');
-  const target = normalize(stockName);
-  const sectors: StockSector[] = [];
+function normalizeText(s: string): string {
+  return s.replace(/\s+/g, '').replace(/\*ST/g, 'ST');
+}
 
-  const match = (board: IndustryBoard, type: 'industry' | 'concept') => {
-    if (!board.leadingStock) return;
-    const leader = normalize(board.leadingStock);
-    if (leader === target || leader.includes(target) || target.includes(leader)) {
-      sectors.push({ name: board.name, type, changePercent: board.changePercent });
+function stockCodeKey(code: string): string {
+  return normalizeCode(code).replace(/^(sh|sz|bj)/i, '');
+}
+
+function isSameStockName(a: string | null | undefined, b: string): boolean {
+  if (!a) return false;
+  const left = normalizeText(a);
+  const right = normalizeText(b);
+  return left === right || left.includes(right) || right.includes(left);
+}
+
+async function mapLimit<T, R>(
+  items: T[],
+  limit: number,
+  worker: (item: T) => Promise<R>,
+): Promise<R[]> {
+  const results: R[] = [];
+  let cursor = 0;
+
+  async function run() {
+    while (cursor < items.length) {
+      const index = cursor;
+      cursor += 1;
+      results[index] = await worker(items[index]);
     }
+  }
+
+  await Promise.all(Array.from({ length: Math.min(limit, items.length) }, run));
+  return results;
+}
+
+function addCandidate(
+  map: Map<string, IndustryBoard>,
+  boardByName: Map<string, IndustryBoard>,
+  board: IndustryBoard | undefined,
+) {
+  if (!board || map.has(board.code)) return;
+  map.set(board.code, board);
+  boardByName.set(board.name, board);
+}
+
+function pushUniqueBoard(list: IndustryBoard[], seen: Set<string>, board: IndustryBoard | undefined) {
+  if (!board || seen.has(board.code)) return;
+  seen.add(board.code);
+  list.push(board);
+}
+
+function buildConceptCandidates(
+  stocks: FullQuote[],
+  conceptList: IndustryBoard[],
+  fundFlowRanks: SectorFundFlowItem[],
+  boardChanges: BoardChangeItem[],
+): IndustryBoard[] {
+  const candidates = new Map<string, IndustryBoard>();
+  const boardByName = new Map(conceptList.map((board) => [board.name, board]));
+  const boardByCode = new Map(conceptList.map((board) => [board.code, board]));
+
+  for (const stock of stocks) {
+    for (const board of conceptList) {
+      if (isSameStockName(board.leadingStock, stock.name)) {
+        addCandidate(candidates, boardByName, board);
+      }
+    }
+  }
+
+  for (const item of boardChanges) {
+    addCandidate(candidates, boardByName, boardByName.get(item.name));
+  }
+
+  for (const item of fundFlowRanks) {
+    addCandidate(candidates, boardByName, boardByCode.get(item.code) ?? boardByName.get(item.name));
+  }
+
+  const strongest = [...conceptList]
+    .sort((a, b) => Math.abs(b.changePercent ?? 0) - Math.abs(a.changePercent ?? 0))
+    .slice(0, CONCEPT_CANDIDATE_LIMIT);
+  for (const board of strongest) {
+    addCandidate(candidates, boardByName, board);
+  }
+
+  return [...candidates.values()].slice(0, CONCEPT_CANDIDATE_LIMIT);
+}
+
+function buildConceptScanOrder(
+  conceptList: IndustryBoard[],
+  candidates: IndustryBoard[],
+): IndustryBoard[] {
+  const ordered: IndustryBoard[] = [];
+  const seen = new Set<string>();
+
+  for (const board of candidates) {
+    pushUniqueBoard(ordered, seen, board);
+  }
+
+  const remainder = conceptList
+    .filter((board) => !seen.has(board.code))
+    .sort((a, b) => {
+      const aMove = Math.abs(a.changePercent ?? 0);
+      const bMove = Math.abs(b.changePercent ?? 0);
+      if (bMove !== aMove) return bMove - aMove;
+      return (b.turnoverRate ?? 0) - (a.turnoverRate ?? 0);
+    });
+
+  for (const board of remainder) {
+    pushUniqueBoard(ordered, seen, board);
+  }
+
+  return ordered;
+}
+
+function scoreConceptForStock(
+  stock: FullQuote,
+  board: IndustryBoard,
+  constituent: IndustryBoardConstituent,
+  fundFlow: SectorFundFlowItem | undefined,
+  boardChange: BoardChangeItem | undefined,
+): number {
+  const stockChg = stock.changePercent ?? 0;
+  const boardChg = boardChange?.changePercent ?? fundFlow?.changePercent ?? board.changePercent ?? 0;
+  const constituentChg = constituent.changePercent ?? stockChg;
+  const sameDirection = Math.sign(stockChg) === Math.sign(boardChg) || Math.abs(stockChg) < 0.1 || Math.abs(boardChg) < 0.1;
+  const stockMag = Math.max(Math.abs(stockChg), 0.1);
+  const boardMag = Math.max(Math.abs(boardChg), 0.1);
+  const chgSimilarity = Math.min(stockMag / boardMag, boardMag / stockMag);
+
+  let score = 20 + Math.abs(boardChg) * 3 + Math.abs(constituentChg) * 1.5;
+  score += sameDirection ? 35 + chgSimilarity * 20 : -25;
+
+  if (isSameStockName(board.leadingStock, stock.name)) score += 60;
+  if (isSameStockName(fundFlow?.topStockName, stock.name) || stockCodeKey(fundFlow?.topStockCode ?? '') === stockCodeKey(stock.code)) {
+    score += 50;
+  }
+  if (isSameStockName(boardChange?.topStockName, stock.name) || stockCodeKey(boardChange?.topStockCode ?? '') === stockCodeKey(stock.code)) {
+    score += 45;
+  }
+
+  const netInflow = fundFlow?.mainNetInflow ?? boardChange?.mainNetInflow ?? 0;
+  if (netInflow !== 0) {
+    const flowBoost = Math.log10(Math.abs(netInflow) + 10_000) - 4;
+    score += Math.sign(stockChg || boardChg || netInflow) === Math.sign(netInflow) ? flowBoost * 4 : -flowBoost * 2;
+  }
+
+  if (boardChange?.totalChangeCount) score += Math.min(boardChange.totalChangeCount, 20);
+  if (boardChange?.topStockDirection?.includes(stockChg >= 0 ? '买入' : '卖出')) score += 12;
+
+  return score;
+}
+
+async function findStockSectors(
+  stocks: FullQuote[],
+  conceptList: IndustryBoard[],
+  onPartial?: (sectors: Record<string, StockSector[]>) => void,
+): Promise<Record<string, StockSector[]>> {
+  if (!stocks.length || !conceptList.length) return {};
+
+  const [fundFlowResult, boardChangeResult] = await Promise.allSettled([
+    getSectorFundFlowRank({ indicator: 'today', sectorType: 'concept' }),
+    getBoardChanges(),
+  ]);
+
+  const fundFlowRanks = fundFlowResult.status === 'fulfilled' ? fundFlowResult.value : [];
+  const boardChanges = boardChangeResult.status === 'fulfilled' ? boardChangeResult.value : [];
+  const candidates = buildConceptCandidates(stocks, conceptList, fundFlowRanks, boardChanges);
+  const scanOrder = buildConceptScanOrder(conceptList, candidates);
+  const fallbackBoards = scanOrder.slice(candidates.length);
+  const stockByCode = new Map(stocks.map((stock) => [stockCodeKey(stock.code), stock]));
+  const fundFlowByCode = new Map(fundFlowRanks.map((item) => [item.code, item]));
+  const fundFlowByName = new Map(fundFlowRanks.map((item) => [item.name, item]));
+  const boardChangeByName = new Map(boardChanges.map((item) => [item.name, item]));
+  const scored: Record<string, (StockSector & { _score: number })[]> = {};
+  const pendingStockCodes = new Set(stocks.map((stock) => stock.code));
+
+  for (const stock of stocks) {
+    scored[stock.code] = [];
+  }
+
+  const toResult = (): Record<string, StockSector[]> => {
+    const result: Record<string, StockSector[]> = {};
+    for (const stock of stocks) {
+      result[stock.code] = (scored[stock.code] ?? [])
+        .sort((a, b) => b._score - a._score)
+        .slice(0, 3)
+        .map((sector) => ({
+          name: sector.name,
+          type: sector.type,
+          changePercent: sector.changePercent,
+        }));
+    }
+    return result;
   };
 
-  for (const board of industryList) match(board, 'industry');
-  for (const board of conceptList) match(board, 'concept');
+  let lastPartialAt = 0;
+  const emitPartial = () => {
+    if (!onPartial) return;
+    const now = Date.now();
+    if (now - lastPartialAt < 600) return;
+    lastPartialAt = now;
+    onPartial(toResult());
+  };
 
-  sectors.sort((a, b) => (b.changePercent ?? -Infinity) - (a.changePercent ?? -Infinity));
-  return sectors.slice(0, 3);
+  const scanBoards = async (boards: IndustryBoard[], stopWhenFilled: boolean) => {
+    await mapLimit(boards, CONCEPT_FETCH_CONCURRENCY, async (board) => {
+      if (stopWhenFilled && pendingStockCodes.size === 0) return;
+
+      try {
+        const constituents = await getConceptConstituents(board.code);
+        const fundFlow = fundFlowByCode.get(board.code) ?? fundFlowByName.get(board.name);
+        const boardChange = boardChangeByName.get(board.name);
+
+        for (const item of constituents) {
+          const stock = stockByCode.get(stockCodeKey(item.code));
+          if (!stock) continue;
+
+          scored[stock.code].push({
+            name: board.name,
+            type: 'concept',
+            changePercent: boardChange?.changePercent ?? fundFlow?.changePercent ?? board.changePercent,
+            _score: scoreConceptForStock(stock, board, item, fundFlow, boardChange),
+          });
+
+          if (scored[stock.code].length >= MIN_CONCEPTS_PER_STOCK) {
+            pendingStockCodes.delete(stock.code);
+          }
+
+          emitPartial();
+        }
+      } catch (err) {
+        console.warn(`Concept constituents fetch failed for ${board.code}:`, err);
+      }
+    });
+  };
+
+  await scanBoards(candidates, false);
+  onPartial?.(toResult());
+
+  for (const stock of stocks) {
+    if (scored[stock.code].length >= MIN_CONCEPTS_PER_STOCK) {
+      pendingStockCodes.delete(stock.code);
+    }
+  }
+
+  if (pendingStockCodes.size > 0) {
+    await scanBoards(fallbackBoards, true);
+  }
+
+  return toResult();
 }
 
 export function HotStocks() {
   const { getRefreshInterval } = useAppSettings();
-  const { industryList, conceptList, loading: boardLoading } = useBoardData();
+  const { conceptList, loading: boardLoading } = useBoardData();
 
   const [topStocks, setTopStocks] = useState<FullQuote[]>([]);
   const [klineData, setKlineData] = useState<Record<string, HistoryKline[]>>({});
@@ -356,9 +598,11 @@ export function HotStocks() {
   const [period, setPeriod] = useState<KlinePeriod>('daily');
   const [initialLoading, setInitialLoading] = useState(true);
   const [klineLoading, setKlineLoading] = useState(false);
+  const [sectorLoading, setSectorLoading] = useState(false);
 
   const periodRef = useRef(period);
   periodRef.current = period;
+  const sectorRequestRef = useRef(0);
 
   const refreshInterval = getRefreshInterval('list');
 
@@ -442,13 +686,41 @@ export function HotStocks() {
     }
   }, []);
 
-  const computeSectors = useCallback((stocks: FullQuote[]) => {
-    const s: Record<string, StockSector[]> = {};
-    for (const stock of stocks) {
-      s[stock.code] = findStockSectors(stock.name, industryList, conceptList);
+  const computeSectors = useCallback(async (stocks: FullQuote[]) => {
+    const requestId = sectorRequestRef.current + 1;
+    sectorRequestRef.current = requestId;
+
+    if (!stocks.length) {
+      setSectors({});
+      setSectorLoading(false);
+      return;
     }
-    setSectors(s);
-  }, [industryList, conceptList]);
+
+    if (!conceptList.length) {
+      setSectorLoading(false);
+      return;
+    }
+
+    setSectorLoading(true);
+
+    try {
+      const applySectors = (nextSectors: Record<string, StockSector[]>) => {
+        if (sectorRequestRef.current === requestId) {
+          setSectors(nextSectors);
+        }
+      };
+      const nextSectors = await findStockSectors(stocks, conceptList, applySectors);
+      if (sectorRequestRef.current === requestId) {
+        setSectors(nextSectors);
+      }
+    } catch (error) {
+      console.error('computeSectors error:', error);
+    } finally {
+      if (sectorRequestRef.current === requestId) {
+        setSectorLoading(false);
+      }
+    }
+  }, [conceptList]);
 
   useEffect(() => {
     let cancelled = false;
@@ -467,7 +739,7 @@ export function HotStocks() {
     if (!initialLoading && topStocks.length > 0) {
       fetchKlines(topStocks);
     }
-  }, [period]);
+  }, [period, initialLoading, topStocks, fetchKlines]);
 
   usePolling(fetchTopStocks, {
     interval: refreshInterval || 0,
@@ -479,7 +751,7 @@ export function HotStocks() {
     if (topStocks.length > 0 && (!boardLoading)) {
       computeSectors(topStocks);
     }
-  }, [industryList, conceptList, topStocks, boardLoading, computeSectors]);
+  }, [conceptList, topStocks, boardLoading, computeSectors]);
 
   const periodChange = (p: KlinePeriod) => {
     setPeriod(p);
@@ -529,34 +801,42 @@ export function HotStocks() {
             transition={{ delay: index * 0.04 }}
           >
             <div className={styles.cardUpper}>
-              <div className={styles.stockMain}>
-                <span className={styles.rank}>#{index + 1}</span>
-                <span className={styles.stockName}>{stock.name}</span>
-                <span className={styles.stockCode}>{stock.code}</span>
+              <div className={styles.cardInfoRow}>
+                <div className={styles.stockMain}>
+                  <span className={styles.rank}>#{index + 1}</span>
+                  <span className={styles.stockName}>{stock.name}</span>
+                  <span className={styles.stockCode}>{stock.code}</span>
+                </div>
+                <div className={styles.stockPrice}>
+                  <span className={`${styles.price} ${getChangeColorClass(stock.changePercent)}`}>
+                    {formatPrice(stock.price)}
+                  </span>
+                  <span className={`${styles.change} ${getChangeColorClass(stock.changePercent)}`}>
+                    {formatPercent(stock.changePercent)}
+                  </span>
+                </div>
+                <div className={styles.stockAmount}>
+                  成交额 {formatAmount(stock.amount)}
+                </div>
               </div>
-              <div className={styles.stockPrice}>
-                <span className={`${styles.price} ${getChangeColorClass(stock.changePercent)}`}>
-                  {formatPrice(stock.price)}
-                </span>
-                <span className={`${styles.change} ${getChangeColorClass(stock.changePercent)}`}>
-                  {formatPercent(stock.changePercent)}
-                </span>
-              </div>
-              <div className={styles.stockAmount}>
-                成交额 {formatAmount(stock.amount)}
-              </div>
-              {sectors[stock.code]?.length > 0 && (
+              {(sectors[stock.code]?.length > 0 || sectorLoading) && (
                 <div className={styles.sectors}>
-                  {sectors[stock.code].map((s, si) => (
-                    <span
-                      key={`${s.name}-${si}`}
-                      className={`${styles.sectorTag} ${
-                        s.type === 'concept' ? styles.sectorConcept : styles.sectorIndustry
-                      }`}
-                    >
-                      {s.name}
+                  {sectors[stock.code]?.length > 0 ? (
+                    sectors[stock.code].map((s, si) => (
+                      <span
+                        key={`${s.name}-${si}`}
+                        className={`${styles.sectorTag} ${
+                          s.type === 'concept' ? styles.sectorConcept : styles.sectorIndustry
+                        }`}
+                      >
+                        {s.name}
+                      </span>
+                    ))
+                  ) : (
+                    <span className={`${styles.sectorTag} ${styles.sectorLoading}`}>
+                      题材匹配中
                     </span>
-                  ))}
+                  )}
                 </div>
               )}
             </div>

@@ -31,17 +31,13 @@ export function BoardDataProvider({ children }: BoardDataProviderProps) {
 
   // 获取板块数据
   const fetchData = useCallback(async (force = false) => {
-    // 防止重复请求
     if (isFetchingRef.current) return;
     
-    // 检查最小刷新间隔
     if (!force && lastUpdated && Date.now() - lastUpdated < MIN_REFRESH_INTERVAL) {
       return;
     }
 
     isFetchingRef.current = true;
-    // 只在初始加载时显示 loading 状态，后续刷新不影响 loading
-    // (loading 初始值已经是 true)
 
     try {
       const [industryResult, conceptResult] = await Promise.allSettled([
@@ -65,7 +61,6 @@ export function BoardDataProvider({ children }: BoardDataProviderProps) {
     } catch (error) {
       console.error('[BoardDataContext] Fetch error:', error);
     } finally {
-      // 无论成功或失败，初始加载完成后都设置 loading 为 false
       if (isInitialLoadRef.current) {
         setLoading(false);
         isInitialLoadRef.current = false;

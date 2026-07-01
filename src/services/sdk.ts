@@ -3,9 +3,9 @@
  * 封装 SDK 调用，提供缓存与错误处理
  */
 
-import { StockSDK } from 'stock-sdk';
+import { StockSDK, jsonpRequest } from 'stock-sdk';
 import type { CacheItem } from '@/types';
-import type { DividendDetail, SearchResult as SDKSearchResult } from 'stock-sdk';
+import type { DividendDetail, IndustryBoard, IndustryBoardConstituent, SearchResult as SDKSearchResult } from 'stock-sdk';
 import { normalizeStockCode } from '@/utils/format';
 
 export type SearchEntityType = 'stock' | 'industry' | 'concept' | 'unsupported';
@@ -284,12 +284,89 @@ export async function getTodayTimeline(code: string) {
 
 // ========== 板块 API ==========
 
+// 板块列表 API：开发环境通过 Vite 代理转发，生产环境直接访问
+const BOARD_LIST_BASE = import.meta.env.DEV
+  ? '/api/board/qt/clist/get'
+  : 'https://push2.eastmoney.com/api/qt/clist/get';
+
+function parseBoardNum(val: unknown): number | null {
+  if (val === '-' || val === null || val === undefined) return null;
+  const n = Number(val);
+  return isNaN(n) ? null : n;
+}
+
+async function fetchBoardListJson(params: URLSearchParams): Promise<IndustryBoard[]> {
+  const url = `${BOARD_LIST_BASE}?${params.toString()}`;
+
+  if (import.meta.env.DEV) {
+    const response = await fetch(url);
+    if (!response.ok) {
+      throw new Error(`Board list API returned ${response.status}`);
+    }
+    const json = await response.json();
+    const data = json?.data;
+    if (!data || !Array.isArray(data.diff)) return [];
+    return parseBoardDiff(data.diff);
+  }
+
+  const json = await jsonpRequest<{ rc: number; data: { total: number; diff: Record<string, unknown>[] } }>(
+    url,
+    { callbackParam: 'cb', timeout: 15000 },
+  );
+  const data = json?.data;
+  if (!data || !Array.isArray(data.diff)) return [];
+  return parseBoardDiff(data.diff);
+}
+
+function parseBoardDiff(diff: Record<string, unknown>[]): IndustryBoard[] {
+  const boards: IndustryBoard[] = diff.map((item, idx) => ({
+    rank: idx + 1,
+    name: String(item.f14 ?? ''),
+    code: String(item.f12 ?? ''),
+    price: parseBoardNum(item.f2),
+    change: parseBoardNum(item.f4),
+    changePercent: parseBoardNum(item.f3),
+    totalMarketCap: parseBoardNum(item.f20),
+    turnoverRate: parseBoardNum(item.f8),
+    riseCount: parseBoardNum(item.f104),
+    fallCount: parseBoardNum(item.f105),
+    leadingStock: item.f128 ? String(item.f128) : null,
+    leadingStockChangePercent: parseBoardNum(item.f136),
+  }));
+  boards.sort((a, b) => (b.changePercent ?? 0) - (a.changePercent ?? 0));
+  boards.forEach((b, i) => { b.rank = i + 1; });
+  return boards;
+}
+
+async function fetchBoardList(fsFilter: string, fid: string, fields: string): Promise<IndustryBoard[]> {
+  const pageSize = 2000;
+  const params = new URLSearchParams({
+    po: '1',
+    np: '1',
+    ut: 'bd1d9ddb04089700cf9c27f6f7426281',
+    fltt: '2',
+    invt: '2',
+    fid,
+    fs: fsFilter,
+    pz: String(pageSize),
+    fields,
+  });
+
+  return fetchBoardListJson(params);
+}
+
 /**
  * 获取行业板块列表
  */
 export async function getIndustryList() {
   const key = getCacheKey('getIndustryList');
-  return withCache(key, DEFAULT_TTL.boardList, () => sdk.getIndustryList());
+  return withCache(key, DEFAULT_TTL.boardList, () =>
+    fetchBoardList(
+      'm:90 t:2 f:!50',
+      'f3',
+      'f1,f2,f3,f4,f5,f6,f7,f8,f9,f10,f12,f13,f14,f15,f16,f17,f18,f20,f21,f23,f24,f25,f26,f22,f33,f11,f62,f128,f136,f115,f152,f124,f107,f104,f105,f140,f141,f207,f208,f209,f222',
+    ),
+  );
 }
 
 /**
@@ -297,7 +374,75 @@ export async function getIndustryList() {
  */
 export async function getConceptList() {
   const key = getCacheKey('getConceptList');
-  return withCache(key, DEFAULT_TTL.boardList, () => sdk.getConceptList());
+  return withCache(key, DEFAULT_TTL.boardList, () =>
+    fetchBoardList(
+      'm:90 t:3 f:!50',
+      'f12',
+      'f2,f3,f4,f8,f12,f14,f15,f16,f17,f18,f20,f21,f24,f25,f22,f33,f11,f62,f128,f124,f107,f104,f105,f136',
+    ),
+  );
+}
+
+/**
+ * 获取板块成分股（行业/概念通用）
+ * 开发环境通过 Vite 代理转发，与 getConceptList 保持一致的网络通路
+ *
+ * 返回结构兼容 stock-sdk 的 IndustryBoardConstituent / ConceptBoardConstituent 类型
+ */
+async function fetchBoardConstituents(symbol: string): Promise<IndustryBoardConstituent[]> {
+  const pageSize = 800;
+  const fields = 'f2,f3,f4,f5,f6,f7,f8,f9,f10,f12,f14,f15,f16,f17,f18,f20,f21,f23,f24,f25,f11,f62,f115,f128,f136,f152,f45';
+  const params = new URLSearchParams({
+    po: '1',
+    np: '1',
+    ut: 'bd1d9ddb04089700cf9c27f6f7426281',
+    fltt: '2',
+    invt: '2',
+    fid: 'f3',
+    fs: `b:${symbol} f:!50`,
+    pz: String(pageSize),
+    fields,
+  });
+
+  const url = `${BOARD_LIST_BASE}?${params.toString()}`;
+
+  const parseItem = (item: Record<string, unknown>, idx: number): IndustryBoardConstituent => ({
+    rank: idx + 1,
+    code: String(item.f12 ?? ''),
+    name: String(item.f14 ?? ''),
+    price: parseBoardNum(item.f2),
+    changePercent: parseBoardNum(item.f3),
+    change: parseBoardNum(item.f4),
+    volume: parseBoardNum(item.f5),
+    amount: parseBoardNum(item.f6),
+    amplitude: parseBoardNum(item.f7),
+    high: parseBoardNum(item.f15),
+    low: parseBoardNum(item.f16),
+    open: parseBoardNum(item.f17),
+    prevClose: parseBoardNum(item.f18),
+    turnoverRate: parseBoardNum(item.f8),
+    pe: parseBoardNum(item.f9),
+    pb: parseBoardNum(item.f23),
+  });
+
+  if (import.meta.env.DEV) {
+    const response = await fetch(url);
+    if (!response.ok) {
+      throw new Error(`Board constituent API returned ${response.status}`);
+    }
+    const json = await response.json();
+    const data = json?.data;
+    if (!data || !Array.isArray(data.diff)) return [];
+    return data.diff.map((item: Record<string, unknown>, idx: number) => parseItem(item, idx));
+  }
+
+  const json = await jsonpRequest<{ rc: number; data: { total: number; diff: Record<string, unknown>[] } }>(
+    url,
+    { callbackParam: 'cb', timeout: 15000 },
+  );
+  const data = json?.data;
+  if (!data || !Array.isArray(data.diff)) return [];
+  return data.diff.map((item: Record<string, unknown>, idx: number) => parseItem(item, idx));
 }
 
 /**
@@ -306,7 +451,7 @@ export async function getConceptList() {
 export async function getIndustryConstituents(symbol: string) {
   const key = getCacheKey('getIndustryConstituents', symbol);
   return withCache(key, DEFAULT_TTL.constituents, () =>
-    sdk.getIndustryConstituents(symbol)
+    fetchBoardConstituents(symbol)
   );
 }
 
@@ -316,7 +461,7 @@ export async function getIndustryConstituents(symbol: string) {
 export async function getConceptConstituents(symbol: string) {
   const key = getCacheKey('getConceptConstituents', symbol);
   return withCache(key, DEFAULT_TTL.constituents, () =>
-    sdk.getConceptConstituents(symbol)
+    fetchBoardConstituents(symbol)
   );
 }
 
